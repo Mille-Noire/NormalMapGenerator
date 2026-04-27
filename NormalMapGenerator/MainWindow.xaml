@@ -49,7 +49,7 @@
                     <ColumnDefinition Width="24" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="420" />
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="LoadHeightmapButton"
@@ -60,332 +60,562 @@
                         VerticalAlignment="Top"
                         Click="LoadHeightmapButton_Click" />
 
-                <StackPanel Grid.Column="2">
-                    <TextBlock Text="Normal Map Settings"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,8" />
+                <TabControl x:Name="MapSettingsTabControl"
+                            Grid.Column="2"
+                            SelectionChanged="MapSettingsTabControl_SelectionChanged">
+                    <TabItem Header="Normal Map">
+                        <StackPanel Margin="0,10,0,0">
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0">
+                                    <TextBlock Text="Strength"
+                                               VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource InfoBadgeStyle}">
+                                        <Border.ToolTip>
+                                            <TextBlock MaxWidth="280"
+                                                       TextWrapping="Wrap"
+                                                       Text="Controls how strongly height differences bend the generated normals. 0.00 is almost flat, 5.00 is the default, higher values create stronger normal detail." />
+                                        </Border.ToolTip>
+                                        <TextBlock Text="i"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#475467"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                                <Button x:Name="DecreaseStrengthButton"
+                                        Grid.Column="1"
+                                        Content="-"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="0,0,6,0"
+                                        Click="DecreaseStrengthButton_Click"
+                                        ToolTip="Decrease strength by 0.01. Hold Shift for 0.1." />
+                                <Slider x:Name="StrengthSlider"
+                                        Grid.Column="2"
+                                        Minimum="0"
+                                        Maximum="20"
+                                        Value="5"
+                                        TickFrequency="1"
+                                        IsSnapToTickEnabled="False"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="SettingsChanged" />
+                                <Button x:Name="IncreaseStrengthButton"
+                                        Grid.Column="3"
+                                        Content="+"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="IncreaseStrengthButton_Click"
+                                        ToolTip="Increase strength by 0.01. Hold Shift for 0.1." />
+                                <TextBox x:Name="StrengthValueText"
+                                         Grid.Column="4"
+                                         Text="5.00"
+                                         Width="58"
+                                         Margin="8,0,0,0"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         LostFocus="StrengthValueText_LostFocus"
+                                         KeyDown="StrengthValueText_KeyDown"
+                                         ToolTip="Enter a strength value from 0 to 20." />
+                                <Button x:Name="ResetStrengthButton"
+                                        Grid.Column="5"
+                                        Content="Reset"
+                                        MinWidth="46"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        Click="ResetStrengthButton_Click"
+                                        ToolTip="Reset strength to 5.00." />
+                            </Grid>
 
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="112" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0">
+                                    <TextBlock Text="Level"
+                                               VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource InfoBadgeStyle}">
+                                        <Border.ToolTip>
+                                            <TextBlock MaxWidth="280"
+                                                       TextWrapping="Wrap"
+                                                       Text="Scales height contrast before normals are calculated. 0.00 flattens the heightmap, 1.00 is unchanged, values above 1.00 increase height contrast." />
+                                        </Border.ToolTip>
+                                        <TextBlock Text="i"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#475467"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                                <Button x:Name="DecreaseLevelButton"
+                                        Grid.Column="1"
+                                        Content="-"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="0,0,6,0"
+                                        Click="DecreaseLevelButton_Click"
+                                        ToolTip="Decrease level by 0.01. Hold Shift for 0.1." />
+                                <Slider x:Name="LevelSlider"
+                                        Grid.Column="2"
+                                        Minimum="0"
+                                        Maximum="3"
+                                        Value="1"
+                                        TickFrequency="0.1"
+                                        IsSnapToTickEnabled="False"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="SettingsChanged" />
+                                <Button x:Name="IncreaseLevelButton"
+                                        Grid.Column="3"
+                                        Content="+"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="IncreaseLevelButton_Click"
+                                        ToolTip="Increase level by 0.01. Hold Shift for 0.1." />
+                                <TextBox x:Name="LevelValueText"
+                                         Grid.Column="4"
+                                         Text="1.00"
+                                         Width="58"
+                                         Margin="8,0,0,0"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         LostFocus="LevelValueText_LostFocus"
+                                         KeyDown="LevelValueText_KeyDown"
+                                         ToolTip="Enter a level value from 0 to 3." />
+                                <Button x:Name="ResetLevelButton"
+                                        Grid.Column="5"
+                                        Content="Reset"
+                                        MinWidth="46"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        Click="ResetLevelButton_Click"
+                                        ToolTip="Reset level to 1.00." />
+                            </Grid>
 
-                        <StackPanel Grid.Column="0"
-                                    Orientation="Horizontal"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,8,0">
-                            <TextBlock Text="Strength"
-                                       VerticalAlignment="Center" />
-                            <Border Style="{StaticResource InfoBadgeStyle}">
-                                <Border.ToolTip>
-                                    <TextBlock MaxWidth="280"
-                                               TextWrapping="Wrap"
-                                               Text="Controls how strongly height differences bend the generated normals. 0.00 is almost flat, 5.00 is the default, higher values create stronger normal detail." />
-                                </Border.ToolTip>
-                                <TextBlock Text="i"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="#475467"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </Border>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0">
+                                    <TextBlock Text="Blur / Sharp"
+                                               VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource InfoBadgeStyle}">
+                                        <Border.ToolTip>
+                                            <TextBlock MaxWidth="280"
+                                                       TextWrapping="Wrap"
+                                                       Text="Adjusts heightmap detail before normals are calculated. Negative values sharpen detail, 0.00 is unchanged, positive values blur and smooth noisy detail." />
+                                        </Border.ToolTip>
+                                        <TextBlock Text="i"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#475467"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                                <Button x:Name="DecreaseBlurSharpButton"
+                                        Grid.Column="1"
+                                        Content="-"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="0,0,6,0"
+                                        Click="DecreaseBlurSharpButton_Click"
+                                        ToolTip="Decrease blur/sharp by 0.01. Hold Shift for 0.1." />
+                                <Slider x:Name="BlurSharpSlider"
+                                        Grid.Column="2"
+                                        Minimum="-10"
+                                        Maximum="10"
+                                        Value="0"
+                                        TickFrequency="1"
+                                        IsSnapToTickEnabled="False"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="SettingsChanged" />
+                                <Button x:Name="IncreaseBlurSharpButton"
+                                        Grid.Column="3"
+                                        Content="+"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="IncreaseBlurSharpButton_Click"
+                                        ToolTip="Increase blur/sharp by 0.01. Hold Shift for 0.1." />
+                                <TextBox x:Name="BlurSharpValueText"
+                                         Grid.Column="4"
+                                         Text="0.00"
+                                         Width="58"
+                                         Margin="8,0,0,0"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         LostFocus="BlurSharpValueText_LostFocus"
+                                         KeyDown="BlurSharpValueText_KeyDown"
+                                         ToolTip="Enter -10 to sharpen, 0 for unchanged, or 10 to blur." />
+                                <Button x:Name="ResetBlurSharpButton"
+                                        Grid.Column="5"
+                                        Content="Reset"
+                                        MinWidth="46"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        Click="ResetBlurSharpButton_Click"
+                                        ToolTip="Reset blur/sharp to 0.00." />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,0,8,0"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="Channel Source"
+                                               VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource InfoBadgeStyle}">
+                                        <Border.ToolTip>
+                                            <TextBlock MaxWidth="280"
+                                                       TextWrapping="Wrap"
+                                                       Text="Selects which image channel is interpreted as height. Luminance uses RGB brightness; Red, Green, Blue, or Alpha use only that single channel." />
+                                        </Border.ToolTip>
+                                        <TextBlock Text="i"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#475467"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                                <ComboBox x:Name="ChannelSourceComboBox"
+                                          MinWidth="116"
+                                          Margin="0,0,20,0"
+                                          SelectionChanged="SettingsChanged"
+                                          ToolTip="Select which source channel is interpreted as height.">
+                                    <ComboBoxItem Content="Luminance"
+                                                  Tag="Luminance"
+                                                  IsSelected="True" />
+                                    <ComboBoxItem Content="Red"
+                                                  Tag="Red" />
+                                    <ComboBoxItem Content="Green"
+                                                  Tag="Green" />
+                                    <ComboBoxItem Content="Blue"
+                                                  Tag="Blue" />
+                                    <ComboBoxItem Content="Alpha"
+                                                  Tag="Alpha" />
+                                </ComboBox>
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,0,8,0"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="Edge Mode"
+                                               VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource InfoBadgeStyle}">
+                                        <Border.ToolTip>
+                                            <TextBlock MaxWidth="280"
+                                                       TextWrapping="Wrap"
+                                                       Text="Controls how pixels beyond image edges are sampled. Clamp repeats the nearest edge pixel; Wrap samples from the opposite side for tileable textures." />
+                                        </Border.ToolTip>
+                                        <TextBlock Text="i"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#475467"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                                <ComboBox x:Name="EdgeModeComboBox"
+                                          MinWidth="96"
+                                          SelectionChanged="SettingsChanged"
+                                          ToolTip="Clamp keeps edge pixels fixed. Wrap samples across image borders for tileable textures.">
+                                    <ComboBoxItem Content="Clamp"
+                                                  Tag="Clamp"
+                                                  IsSelected="True" />
+                                    <ComboBoxItem Content="Wrap"
+                                                  Tag="Wrap" />
+                                </ComboBox>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="InvertXCheckBox"
+                                          Content="Invert X"
+                                          Margin="0,0,16,0"
+                                          VerticalAlignment="Center"
+                                          Checked="SettingsChanged"
+                                          Unchecked="SettingsChanged" />
+                                <CheckBox x:Name="InvertYCheckBox"
+                                          Content="Invert Y"
+                                          IsChecked="True"
+                                          Margin="0,0,16,0"
+                                          VerticalAlignment="Center"
+                                          Checked="SettingsChanged"
+                                          Unchecked="SettingsChanged" />
+                            </StackPanel>
                         </StackPanel>
-                        <Button x:Name="DecreaseStrengthButton"
-                                Grid.Column="1"
-                                Content="-"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="0,0,6,0"
-                                Click="DecreaseStrengthButton_Click"
-                                ToolTip="Decrease strength by 0.01. Hold Shift for 0.1." />
-                        <Slider x:Name="StrengthSlider"
-                                Grid.Column="2"
-                                Minimum="0"
-                                Maximum="20"
-                                Value="5"
-                                TickFrequency="1"
-                                IsSnapToTickEnabled="False"
-                                VerticalAlignment="Center"
-                                ValueChanged="SettingsChanged" />
-                        <Button x:Name="IncreaseStrengthButton"
-                                Grid.Column="3"
-                                Content="+"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="6,0,0,0"
-                                Click="IncreaseStrengthButton_Click"
-                                ToolTip="Increase strength by 0.01. Hold Shift for 0.1." />
-                        <TextBox x:Name="StrengthValueText"
-                                 Grid.Column="4"
-                                 Text="5.00"
-                                 Width="58"
-                                 Margin="8,0,0,0"
-                                 Padding="4,2"
-                                 VerticalContentAlignment="Center"
-                                 LostFocus="StrengthValueText_LostFocus"
-                                 KeyDown="StrengthValueText_KeyDown"
-                                 ToolTip="Enter a strength value from 0 to 20." />
-                        <Button x:Name="ResetStrengthButton"
-                                Grid.Column="5"
-                                Content="Reset"
-                                MinWidth="46"
-                                Padding="6,2"
-                                Margin="8,0,0,0"
-                                Click="ResetStrengthButton_Click"
-                                ToolTip="Reset strength to 5.00." />
-                    </Grid>
+                    </TabItem>
 
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="112" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <TabItem Header="Displacement Map">
+                        <StackPanel Margin="0,10,0,0">
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="Level"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0" />
+                                <Button x:Name="DecreaseDisplacementLevelButton"
+                                        Grid.Column="1"
+                                        Content="-"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="0,0,6,0"
+                                        Click="DecreaseDisplacementLevelButton_Click" />
+                                <Slider x:Name="DisplacementLevelSlider"
+                                        Grid.Column="2"
+                                        Minimum="0"
+                                        Maximum="3"
+                                        Value="1"
+                                        TickFrequency="0.1"
+                                        IsSnapToTickEnabled="False"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="DisplacementSettingsChanged" />
+                                <Button x:Name="IncreaseDisplacementLevelButton"
+                                        Grid.Column="3"
+                                        Content="+"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="IncreaseDisplacementLevelButton_Click" />
+                                <TextBox x:Name="DisplacementLevelValueText"
+                                         Grid.Column="4"
+                                         Text="1.00"
+                                         Width="58"
+                                         Margin="8,0,0,0"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         LostFocus="DisplacementLevelValueText_LostFocus"
+                                         KeyDown="DisplacementLevelValueText_KeyDown" />
+                                <Button x:Name="ResetDisplacementLevelButton"
+                                        Grid.Column="5"
+                                        Content="Reset"
+                                        MinWidth="46"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        Click="ResetDisplacementLevelButton_Click" />
+                            </Grid>
 
-                        <StackPanel Grid.Column="0"
-                                    Orientation="Horizontal"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,8,0">
-                            <TextBlock Text="Level"
-                                       VerticalAlignment="Center" />
-                            <Border Style="{StaticResource InfoBadgeStyle}">
-                                <Border.ToolTip>
-                                    <TextBlock MaxWidth="280"
-                                               TextWrapping="Wrap"
-                                               Text="Scales height contrast before normals are calculated. 0.00 flattens the heightmap, 1.00 is unchanged, values above 1.00 increase height contrast." />
-                                </Border.ToolTip>
-                                <TextBlock Text="i"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="#475467"
-                                           HorizontalAlignment="Center"
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="Blur / Sharp"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0" />
+                                <Button x:Name="DecreaseDisplacementBlurSharpButton"
+                                        Grid.Column="1"
+                                        Content="-"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="0,0,6,0"
+                                        Click="DecreaseDisplacementBlurSharpButton_Click" />
+                                <Slider x:Name="DisplacementBlurSharpSlider"
+                                        Grid.Column="2"
+                                        Minimum="-10"
+                                        Maximum="10"
+                                        Value="0"
+                                        TickFrequency="1"
+                                        IsSnapToTickEnabled="False"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="DisplacementSettingsChanged" />
+                                <Button x:Name="IncreaseDisplacementBlurSharpButton"
+                                        Grid.Column="3"
+                                        Content="+"
+                                        Width="18"
+                                        Height="18"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="IncreaseDisplacementBlurSharpButton_Click" />
+                                <TextBox x:Name="DisplacementBlurSharpValueText"
+                                         Grid.Column="4"
+                                         Text="0.00"
+                                         Width="58"
+                                         Margin="8,0,0,0"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         LostFocus="DisplacementBlurSharpValueText_LostFocus"
+                                         KeyDown="DisplacementBlurSharpValueText_KeyDown" />
+                                <Button x:Name="ResetDisplacementBlurSharpButton"
+                                        Grid.Column="5"
+                                        Content="Reset"
+                                        MinWidth="46"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0"
+                                        Click="ResetDisplacementBlurSharpButton_Click" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,0,0,8">
+                                <TextBlock Text="Channel Source"
+                                           Margin="0,0,8,0"
                                            VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
-                        <Button x:Name="DecreaseLevelButton"
-                                Grid.Column="1"
-                                Content="-"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="0,0,6,0"
-                                Click="DecreaseLevelButton_Click"
-                                ToolTip="Decrease level by 0.01. Hold Shift for 0.1." />
-                        <Slider x:Name="LevelSlider"
-                                Grid.Column="2"
-                                Minimum="0"
-                                Maximum="3"
-                                Value="1"
-                                TickFrequency="0.1"
-                                IsSnapToTickEnabled="False"
-                                VerticalAlignment="Center"
-                                ValueChanged="SettingsChanged" />
-                        <Button x:Name="IncreaseLevelButton"
-                                Grid.Column="3"
-                                Content="+"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="6,0,0,0"
-                                Click="IncreaseLevelButton_Click"
-                                ToolTip="Increase level by 0.01. Hold Shift for 0.1." />
-                        <TextBox x:Name="LevelValueText"
-                                 Grid.Column="4"
-                                 Text="1.00"
-                                 Width="58"
-                                 Margin="8,0,0,0"
-                                 Padding="4,2"
-                                 VerticalContentAlignment="Center"
-                                 LostFocus="LevelValueText_LostFocus"
-                                 KeyDown="LevelValueText_KeyDown"
-                                 ToolTip="Enter a level value from 0 to 3." />
-                        <Button x:Name="ResetLevelButton"
-                                Grid.Column="5"
-                                Content="Reset"
-                                MinWidth="46"
-                                Padding="6,2"
-                                Margin="8,0,0,0"
-                                Click="ResetLevelButton_Click"
-                                ToolTip="Reset level to 1.00." />
-                    </Grid>
-
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="112" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0"
-                                    Orientation="Horizontal"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,8,0">
-                            <TextBlock Text="Blur / Sharp"
-                                       VerticalAlignment="Center" />
-                            <Border Style="{StaticResource InfoBadgeStyle}">
-                                <Border.ToolTip>
-                                    <TextBlock MaxWidth="280"
-                                               TextWrapping="Wrap"
-                                               Text="Adjusts heightmap detail before normals are calculated. Negative values sharpen detail, 0.00 is unchanged, positive values blur and smooth noisy detail." />
-                                </Border.ToolTip>
-                                <TextBlock Text="i"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="#475467"
-                                           HorizontalAlignment="Center"
+                                <ComboBox x:Name="DisplacementChannelSourceComboBox"
+                                          MinWidth="116"
+                                          Margin="0,0,20,0"
+                                          SelectionChanged="DisplacementSettingsChanged">
+                                    <ComboBoxItem Content="Luminance"
+                                                  Tag="Luminance"
+                                                  IsSelected="True" />
+                                    <ComboBoxItem Content="Red"
+                                                  Tag="Red" />
+                                    <ComboBoxItem Content="Green"
+                                                  Tag="Green" />
+                                    <ComboBoxItem Content="Blue"
+                                                  Tag="Blue" />
+                                    <ComboBoxItem Content="Alpha"
+                                                  Tag="Alpha" />
+                                </ComboBox>
+                                <TextBlock Text="Edge Mode"
+                                           Margin="0,0,8,0"
                                            VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
-                        <Button x:Name="DecreaseBlurSharpButton"
-                                Grid.Column="1"
-                                Content="-"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="0,0,6,0"
-                                Click="DecreaseBlurSharpButton_Click"
-                                ToolTip="Decrease blur/sharp by 0.01. Hold Shift for 0.1." />
-                        <Slider x:Name="BlurSharpSlider"
-                                Grid.Column="2"
-                                Minimum="-10"
-                                Maximum="10"
-                                Value="0"
-                                TickFrequency="1"
-                                IsSnapToTickEnabled="False"
-                                VerticalAlignment="Center"
-                                ValueChanged="SettingsChanged" />
-                        <Button x:Name="IncreaseBlurSharpButton"
-                                Grid.Column="3"
-                                Content="+"
-                                Width="18"
-                                Height="18"
-                                Padding="0"
-                                Margin="6,0,0,0"
-                                Click="IncreaseBlurSharpButton_Click"
-                                ToolTip="Increase blur/sharp by 0.01. Hold Shift for 0.1." />
-                        <TextBox x:Name="BlurSharpValueText"
-                                 Grid.Column="4"
-                                 Text="0.00"
-                                 Width="58"
-                                 Margin="8,0,0,0"
-                                 Padding="4,2"
-                                 VerticalContentAlignment="Center"
-                                 LostFocus="BlurSharpValueText_LostFocus"
-                                 KeyDown="BlurSharpValueText_KeyDown"
-                                 ToolTip="Enter -10 to sharpen, 0 for unchanged, or 10 to blur." />
-                        <Button x:Name="ResetBlurSharpButton"
-                                Grid.Column="5"
-                                Content="Reset"
-                                MinWidth="46"
-                                Padding="6,2"
-                                Margin="8,0,0,0"
-                                Click="ResetBlurSharpButton_Click"
-                                ToolTip="Reset blur/sharp to 0.00." />
-                    </Grid>
+                                <ComboBox x:Name="DisplacementEdgeModeComboBox"
+                                          MinWidth="96"
+                                          SelectionChanged="DisplacementSettingsChanged">
+                                    <ComboBoxItem Content="Clamp"
+                                                  Tag="Clamp"
+                                                  IsSelected="True" />
+                                    <ComboBoxItem Content="Wrap"
+                                                  Tag="Wrap" />
+                                </ComboBox>
+                            </StackPanel>
 
-                    <StackPanel Orientation="Horizontal"
-                                Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,0,8,0"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="Channel Source"
-                                       VerticalAlignment="Center" />
-                            <Border Style="{StaticResource InfoBadgeStyle}">
-                                <Border.ToolTip>
-                                    <TextBlock MaxWidth="280"
-                                               TextWrapping="Wrap"
-                                               Text="Selects which image channel is interpreted as height. Luminance uses RGB brightness; Red, Green, Blue, or Alpha use only that single channel." />
-                                </Border.ToolTip>
-                                <TextBlock Text="i"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="#475467"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </Border>
+                            <CheckBox x:Name="InvertDisplacementCheckBox"
+                                      Content="Invert"
+                                      VerticalAlignment="Center"
+                                      Checked="DisplacementSettingsChanged"
+                                      Unchecked="DisplacementSettingsChanged" />
                         </StackPanel>
-                        <ComboBox x:Name="ChannelSourceComboBox"
-                                  MinWidth="116"
-                                  Margin="0,0,20,0"
-                                  SelectionChanged="SettingsChanged"
-                                  ToolTip="Select which source channel is interpreted as height.">
-                            <ComboBoxItem Content="Luminance"
-                                          Tag="Luminance"
-                                          IsSelected="True" />
-                            <ComboBoxItem Content="Red"
-                                          Tag="Red" />
-                            <ComboBoxItem Content="Green"
-                                          Tag="Green" />
-                            <ComboBoxItem Content="Blue"
-                                          Tag="Blue" />
-                            <ComboBoxItem Content="Alpha"
-                                          Tag="Alpha" />
-                        </ComboBox>
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,0,8,0"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="Edge Mode"
-                                       VerticalAlignment="Center" />
-                            <Border Style="{StaticResource InfoBadgeStyle}">
-                                <Border.ToolTip>
-                                    <TextBlock MaxWidth="280"
-                                               TextWrapping="Wrap"
-                                               Text="Controls how pixels beyond image edges are sampled. Clamp repeats the nearest edge pixel; Wrap samples from the opposite side for tileable textures." />
-                                </Border.ToolTip>
-                                <TextBlock Text="i"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="#475467"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
-                        <ComboBox x:Name="EdgeModeComboBox"
-                                  MinWidth="96"
-                                  SelectionChanged="SettingsChanged"
-                                  ToolTip="Clamp keeps edge pixels fixed. Wrap samples across image borders for tileable textures.">
-                            <ComboBoxItem Content="Clamp"
-                                          Tag="Clamp"
-                                          IsSelected="True" />
-                            <ComboBoxItem Content="Wrap"
-                                          Tag="Wrap" />
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal">
-                        <CheckBox x:Name="InvertXCheckBox"
-                                  Content="Invert X"
-                                  Margin="0,0,16,0"
-                                  VerticalAlignment="Center"
-                                  Checked="SettingsChanged"
-                                  Unchecked="SettingsChanged" />
-                        <CheckBox x:Name="InvertYCheckBox"
-                                  Content="Invert Y"
-                                  IsChecked="True"
-                                  Margin="0,0,16,0"
-                                  VerticalAlignment="Center"
-                                  Checked="SettingsChanged"
-                                  Unchecked="SettingsChanged" />
-                    </StackPanel>
-                </StackPanel>
+                    </TabItem>
+                </TabControl>
 
                 <StackPanel Grid.Column="4">
                     <TextBlock Text="3D Preview Settings"
                                FontWeight="SemiBold"
                                Margin="0,0,0,8" />
+                    <CheckBox x:Name="UseNormalMapCheckBox"
+                              Content="Use Normal Map"
+                              IsChecked="True"
+                              Margin="0,0,0,10"
+                              VerticalAlignment="Center"
+                              Checked="PreviewMapUsageChanged"
+                              Unchecked="PreviewMapUsageChanged" />
+                    <CheckBox x:Name="UseDisplacementMapCheckBox"
+                              Content="Use Displacement Map"
+                              Margin="0,0,0,10"
+                              VerticalAlignment="Center"
+                              Checked="PreviewMapUsageChanged"
+                              Unchecked="PreviewMapUsageChanged" />
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Height Scale"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   ToolTip="Controls only the 3D preview displacement strength. Exported displacement maps are not changed." />
+                        <Button x:Name="DecreaseDisplacementHeightScaleButton"
+                                Grid.Column="1"
+                                Content="-"
+                                Width="18"
+                                Height="18"
+                                Padding="0"
+                                Margin="0,0,6,0"
+                                Click="DecreaseDisplacementHeightScaleButton_Click"
+                                ToolTip="Decrease preview height scale by 0.01. Hold Shift for 0.1." />
+                        <Slider x:Name="DisplacementHeightScaleSlider"
+                                Grid.Column="2"
+                                Minimum="0.01"
+                                Maximum="0.25"
+                                Value="0.1"
+                                TickFrequency="0.01"
+                                IsSnapToTickEnabled="False"
+                                VerticalAlignment="Center"
+                                ValueChanged="DisplacementHeightScaleChanged"
+                                ToolTip="Controls only the 3D preview displacement strength." />
+                        <Button x:Name="IncreaseDisplacementHeightScaleButton"
+                                Grid.Column="3"
+                                Content="+"
+                                Width="18"
+                                Height="18"
+                                Padding="0"
+                                Margin="6,0,0,0"
+                                Click="IncreaseDisplacementHeightScaleButton_Click"
+                                ToolTip="Increase preview height scale by 0.01. Hold Shift for 0.1." />
+                        <TextBox x:Name="DisplacementHeightScaleValueText"
+                                 Grid.Column="4"
+                                 Text="0.10"
+                                 Width="58"
+                                 Margin="8,0,0,0"
+                                 Padding="4,2"
+                                 VerticalContentAlignment="Center"
+                                 LostFocus="DisplacementHeightScaleValueText_LostFocus"
+                                 KeyDown="DisplacementHeightScaleValueText_KeyDown"
+                                 ToolTip="Enter a 3D preview height scale from 0.01 to 0.25." />
+                        <Button x:Name="ResetDisplacementHeightScaleButton"
+                                Grid.Column="5"
+                                Content="Reset"
+                                MinWidth="46"
+                                Padding="6,2"
+                                Margin="8,0,0,0"
+                                Click="ResetDisplacementHeightScaleButton_Click"
+                                ToolTip="Reset preview height scale to 0.10." />
+                    </Grid>
                     <CheckBox x:Name="UseHeightmapAlbedoCheckBox"
                               Content="Use Heightmap Albedo"
                               Margin="0,0,0,10"
@@ -440,6 +670,7 @@
                        Margin="0,0,0,8" />
             <TextBlock Grid.Row="0"
                        Grid.Column="2"
+                       x:Name="GeneratedMapPreviewTitle"
                        Text="Generated Normal Map"
                        FontWeight="SemiBold"
                        Margin="0,0,0,8" />
@@ -464,7 +695,7 @@
                     BorderBrush="#D0D5DD"
                     BorderThickness="1"
                     Background="#111827">
-                <Image x:Name="NormalPreviewImage"
+                <Image x:Name="GeneratedMapPreviewImage"
                        Stretch="Uniform"
                        SnapsToDevicePixels="True" />
             </Border>
@@ -490,13 +721,13 @@
 
         <DockPanel Grid.Row="2"
                    LastChildFill="False">
-            <Button x:Name="ExportNormalMapButton"
+            <Button x:Name="ExportMapButton"
                     Content="Export Normal Map"
                     MinWidth="156"
                     Padding="12,6"
                     IsEnabled="False"
                     DockPanel.Dock="Right"
-                    Click="ExportNormalMapButton_Click" />
+                    Click="ExportMapButton_Click" />
         </DockPanel>
     </Grid>
 </Window>

@@ -43,19 +43,16 @@ public static class NormalMapGenerator
             return null;
         }
 
-        double[] heights = BuildHeightMap(sourcePixels, width, height, stride, channelSource, cancellationToken);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return null;
-        }
-
-        heights = ApplyLevel(heights, level, cancellationToken);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return null;
-        }
-
-        heights = ApplyBlurSharp(heights, width, height, blurSharp, edgeMode, cancellationToken);
+        double[] heights = BuildProcessedHeightMap(
+            sourcePixels,
+            width,
+            height,
+            stride,
+            channelSource,
+            edgeMode,
+            level,
+            blurSharp,
+            cancellationToken);
         if (cancellationToken.IsCancellationRequested)
         {
             return null;
@@ -132,6 +129,89 @@ public static class NormalMapGenerator
         return normalMap;
     }
 
+    public static BitmapSource? GenerateDisplacement(
+        BitmapSource source,
+        double level,
+        double blurSharp,
+        bool invert,
+        HeightChannelSource channelSource = HeightChannelSource.Luminance,
+        NormalMapEdgeMode edgeMode = NormalMapEdgeMode.Clamp,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        BitmapSource input = EnsureBgra32(source);
+        int width = input.PixelWidth;
+        int height = input.PixelHeight;
+
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentException("The source image must contain at least one pixel.", nameof(source));
+        }
+
+        int stride = width * 4;
+        byte[] sourcePixels = new byte[stride * height];
+        input.CopyPixels(sourcePixels, stride, 0);
+
+        double[] heights = BuildProcessedHeightMap(
+            sourcePixels,
+            width,
+            height,
+            stride,
+            channelSource,
+            edgeMode,
+            level,
+            blurSharp,
+            cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        byte[] displacementPixels = new byte[stride * height];
+        for (int y = 0; y < height; y++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                double heightValue = Math.Clamp(heights[y * width + x], 0.0, 1.0);
+                if (invert)
+                {
+                    heightValue = 1.0 - heightValue;
+                }
+
+                byte gray = (byte)Math.Clamp(Math.Round(heightValue * 255.0), 0.0, 255.0);
+                int pixelIndex = y * stride + x * 4;
+                displacementPixels[pixelIndex] = gray;
+                displacementPixels[pixelIndex + 1] = gray;
+                displacementPixels[pixelIndex + 2] = gray;
+                displacementPixels[pixelIndex + 3] = 255;
+            }
+        }
+
+        BitmapSource displacementMap = BitmapSource.Create(
+            width,
+            height,
+            input.DpiX,
+            input.DpiY,
+            PixelFormats.Bgra32,
+            null,
+            displacementPixels,
+            stride);
+
+        displacementMap.Freeze();
+        return displacementMap;
+    }
+
     private static BitmapSource EnsureBgra32(BitmapSource source)
     {
         if (source.Format == PixelFormats.Bgra32)
@@ -142,6 +222,32 @@ public static class NormalMapGenerator
         FormatConvertedBitmap converted = new(source, PixelFormats.Bgra32, null, 0);
         converted.Freeze();
         return converted;
+    }
+
+    private static double[] BuildProcessedHeightMap(
+        byte[] pixels,
+        int width,
+        int height,
+        int stride,
+        HeightChannelSource channelSource,
+        NormalMapEdgeMode edgeMode,
+        double level,
+        double blurSharp,
+        CancellationToken cancellationToken)
+    {
+        double[] heights = BuildHeightMap(pixels, width, height, stride, channelSource, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return heights;
+        }
+
+        heights = ApplyLevel(heights, level, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return heights;
+        }
+
+        return ApplyBlurSharp(heights, width, height, blurSharp, edgeMode, cancellationToken);
     }
 
     private static double[] BuildHeightMap(

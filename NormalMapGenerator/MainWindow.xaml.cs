@@ -15,6 +15,8 @@ using HelixToolkit.Wpf.SharpDX;
 using Microsoft.Win32;
 using NormalMapGenerator.ImageProcessing;
 using Media3D = System.Windows.Media.Media3D;
+using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
 
 namespace NormalMapGenerator;
 
@@ -23,13 +25,27 @@ public partial class MainWindow : Window
     private const double DefaultStrength = 5.0;
     private const double DefaultLevel = 1.0;
     private const double DefaultBlurSharp = 0.0;
+    private const double DefaultDisplacementLevel = 1.0;
+    private const double DefaultDisplacementBlurSharp = 0.0;
+    private const double DefaultDisplacementHeightScale = 0.10;
+    private const int PreviewPlaneSubdivisions = 64;
+    private const int PreviewCubeSubdivisions = 32;
+    private const int PreviewSphereLatitudeSegments = 32;
+    private const int PreviewSphereLongitudeSegments = 64;
+    private const int PreviewCylinderSegments = 64;
+    private const int PreviewCylinderHeightSegments = 32;
+    private const int PreviewCylinderCapRings = 16;
+    private const float PreviewHardEdgeFadeWidth = 0.08f;
 
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
+    private BitmapSource? _displacementMap;
     private string? _sourceFilePath;
     private Image? _sourcePreviewImage;
-    private Image? _normalPreviewImage;
-    private Button? _exportNormalMapButton;
+    private Image? _generatedMapPreviewImage;
+    private TextBlock? _generatedMapPreviewTitle;
+    private Button? _exportMapButton;
+    private TabControl? _mapSettingsTabControl;
     private Slider? _strengthSlider;
     private TextBox? _strengthValueText;
     private Slider? _levelSlider;
@@ -40,6 +56,17 @@ public partial class MainWindow : Window
     private ComboBox? _edgeModeComboBox;
     private CheckBox? _invertXCheckBox;
     private CheckBox? _invertYCheckBox;
+    private Slider? _displacementLevelSlider;
+    private TextBox? _displacementLevelValueText;
+    private Slider? _displacementBlurSharpSlider;
+    private TextBox? _displacementBlurSharpValueText;
+    private Slider? _displacementHeightScaleSlider;
+    private TextBox? _displacementHeightScaleValueText;
+    private ComboBox? _displacementChannelSourceComboBox;
+    private ComboBox? _displacementEdgeModeComboBox;
+    private CheckBox? _invertDisplacementCheckBox;
+    private CheckBox? _useNormalMapCheckBox;
+    private CheckBox? _useDisplacementMapCheckBox;
     private CheckBox? _useHeightmapAlbedoCheckBox;
     private ComboBox? _previewShapeComboBox;
     private ContentControl? _preview3DHost;
@@ -49,9 +76,15 @@ public partial class MainWindow : Window
     private MeshGeometryModel3D? _previewModel;
     private PhongMaterial? _previewMaterial;
     private bool _is3DPreviewAvailable;
-    private PreviewRenderRequest? _pendingPreviewRequest;
-    private bool _isPreviewWorkerRunning;
-    private int _previewUpdateVersion;
+    private NormalPreviewRenderRequest? _pendingNormalPreviewRequest;
+    private DisplacementPreviewRenderRequest? _pendingDisplacementPreviewRequest;
+    private bool _isNormalPreviewWorkerRunning;
+    private bool _isDisplacementPreviewWorkerRunning;
+    private PreviewGeometryRenderRequest? _pendingPreviewGeometryRequest;
+    private bool _isPreviewGeometryWorkerRunning;
+    private int _normalPreviewUpdateVersion;
+    private int _displacementPreviewUpdateVersion;
+    private int _previewGeometryUpdateVersion;
 
     public MainWindow()
     {
@@ -61,6 +94,10 @@ public partial class MainWindow : Window
         UpdateStrengthText();
         UpdateLevelText();
         UpdateBlurSharpText();
+        UpdateDisplacementLevelText();
+        UpdateDisplacementBlurSharpText();
+        UpdateDisplacementHeightScaleText();
+        UpdateActiveMapPreview();
     }
 
     protected override void OnClosed(EventArgs e)
@@ -95,12 +132,18 @@ public partial class MainWindow : Window
             BitmapImage image = LoadBitmap(dialog.FileName);
             _sourceImage = image;
             _sourceFilePath = dialog.FileName;
+            _normalMap = null;
+            _displacementMap = null;
             if (_sourcePreviewImage is not null)
             {
                 _sourcePreviewImage.Source = image;
             }
 
+            RefreshPreviewGeometry();
+            UpdateActiveMapPreview();
+            Update3DPreview();
             ScheduleNormalMapRegeneration();
+            ScheduleDisplacementMapRegeneration();
         }
         catch (Exception exception) when (IsImageLoadException(exception))
         {
@@ -108,16 +151,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExportNormalMapButton_Click(object sender, RoutedEventArgs e)
+    private void ExportMapButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_normalMap is null)
+        BitmapSource? map = GetActiveGeneratedMap();
+        if (map is null)
         {
             return;
         }
 
         SaveFileDialog dialog = new()
         {
-            Title = "Export Normal Map",
+            Title = IsDisplacementTabActive() ? "Export Displacement Map" : "Export Normal Map",
             Filter = "PNG Files (*.png)|*.png",
             AddExtension = true,
             DefaultExt = ".png",
@@ -132,14 +176,14 @@ public partial class MainWindow : Window
         try
         {
             PngBitmapEncoder encoder = new();
-            encoder.Frames.Add(BitmapFrame.Create(_normalMap));
+            encoder.Frames.Add(BitmapFrame.Create(map));
 
             using FileStream stream = new(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None);
             encoder.Save(stream);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            ShowError($"The normal map could not be exported.\n\n{exception.Message}");
+            ShowError($"The generated map could not be exported.\n\n{exception.Message}");
         }
     }
 
@@ -149,6 +193,33 @@ public partial class MainWindow : Window
         UpdateLevelText();
         UpdateBlurSharpText();
         ScheduleNormalMapRegeneration();
+    }
+
+    private void DisplacementSettingsChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateDisplacementLevelText();
+        UpdateDisplacementBlurSharpText();
+        ScheduleDisplacementMapRegeneration();
+    }
+
+    private void DisplacementHeightScaleChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateDisplacementHeightScaleText();
+        SchedulePreviewGeometryRefresh();
+    }
+
+    private void MapSettingsTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source == _mapSettingsTabControl)
+        {
+            UpdateActiveMapPreview();
+        }
+    }
+
+    private void PreviewMapUsageChanged(object sender, RoutedEventArgs e)
+    {
+        RefreshPreviewGeometry();
+        Update3DPreview();
     }
 
     private void DecreaseStrengthButton_Click(object sender, RoutedEventArgs e)
@@ -223,6 +294,78 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DecreaseDisplacementLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementLevelSlider is not null)
+        {
+            AdjustSlider(_displacementLevelSlider, -GetSliderStep());
+        }
+    }
+
+    private void IncreaseDisplacementLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementLevelSlider is not null)
+        {
+            AdjustSlider(_displacementLevelSlider, GetSliderStep());
+        }
+    }
+
+    private void ResetDisplacementLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementLevelSlider is not null)
+        {
+            _displacementLevelSlider.Value = DefaultDisplacementLevel;
+        }
+    }
+
+    private void DecreaseDisplacementBlurSharpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementBlurSharpSlider is not null)
+        {
+            AdjustSlider(_displacementBlurSharpSlider, -GetSliderStep());
+        }
+    }
+
+    private void IncreaseDisplacementBlurSharpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementBlurSharpSlider is not null)
+        {
+            AdjustSlider(_displacementBlurSharpSlider, GetSliderStep());
+        }
+    }
+
+    private void ResetDisplacementBlurSharpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementBlurSharpSlider is not null)
+        {
+            _displacementBlurSharpSlider.Value = DefaultDisplacementBlurSharp;
+        }
+    }
+
+    private void DecreaseDisplacementHeightScaleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementHeightScaleSlider is not null)
+        {
+            AdjustSlider(_displacementHeightScaleSlider, -GetSliderStep());
+        }
+    }
+
+    private void IncreaseDisplacementHeightScaleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementHeightScaleSlider is not null)
+        {
+            AdjustSlider(_displacementHeightScaleSlider, GetSliderStep());
+        }
+    }
+
+    private void ResetDisplacementHeightScaleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_displacementHeightScaleSlider is not null)
+        {
+            _displacementHeightScaleSlider.Value = DefaultDisplacementHeightScale;
+        }
+    }
+
     private void StrengthValueText_LostFocus(object sender, RoutedEventArgs e)
     {
         CommitStrengthText();
@@ -265,23 +408,56 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DisplacementLevelValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitDisplacementLevelText();
+    }
+
+    private void DisplacementLevelValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitDisplacementLevelText();
+            e.Handled = true;
+        }
+    }
+
+    private void DisplacementBlurSharpValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitDisplacementBlurSharpText();
+    }
+
+    private void DisplacementBlurSharpValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitDisplacementBlurSharpText();
+            e.Handled = true;
+        }
+    }
+
+    private void DisplacementHeightScaleValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitDisplacementHeightScaleText();
+    }
+
+    private void DisplacementHeightScaleValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitDisplacementHeightScaleText();
+            e.Handled = true;
+        }
+    }
+
     private void ScheduleNormalMapRegeneration()
     {
         if (_sourceImage is null)
         {
             _normalMap = null;
-            Update3DPreview(null);
-
-            if (_normalPreviewImage is not null)
-            {
-                _normalPreviewImage.Source = null;
-            }
-
-            if (_exportNormalMapButton is not null)
-            {
-                _exportNormalMapButton.IsEnabled = false;
-            }
-
+            RefreshPreviewGeometry();
+            UpdateActiveMapPreview();
+            Update3DPreview();
             return;
         }
 
@@ -291,9 +467,7 @@ public partial class MainWindow : Window
             || _channelSourceComboBox is null
             || _edgeModeComboBox is null
             || _invertXCheckBox is null
-            || _invertYCheckBox is null
-            || _normalPreviewImage is null
-            || _exportNormalMapButton is null)
+            || _invertYCheckBox is null)
         {
             return;
         }
@@ -306,11 +480,14 @@ public partial class MainWindow : Window
         NormalMapEdgeMode edgeMode = GetSelectedEdgeMode();
         bool invertX = _invertXCheckBox.IsChecked == true;
         bool invertY = _invertYCheckBox.IsChecked == true;
-        int version = Interlocked.Increment(ref _previewUpdateVersion);
+        int version = Interlocked.Increment(ref _normalPreviewUpdateVersion);
 
-        _exportNormalMapButton.IsEnabled = false;
+        if (!IsDisplacementTabActive() && _exportMapButton is not null)
+        {
+            _exportMapButton.IsEnabled = false;
+        }
 
-        _pendingPreviewRequest = new PreviewRenderRequest(
+        _pendingNormalPreviewRequest = new NormalPreviewRenderRequest(
             version,
             sourceImage,
             strength,
@@ -321,36 +498,107 @@ public partial class MainWindow : Window
             invertX,
             invertY);
 
-        if (!_isPreviewWorkerRunning)
+        if (!_isNormalPreviewWorkerRunning)
         {
-            _isPreviewWorkerRunning = true;
-            _ = RunPreviewWorkerAsync();
+            _isNormalPreviewWorkerRunning = true;
+            _ = RunNormalPreviewWorkerAsync();
         }
     }
 
-    private async Task RunPreviewWorkerAsync()
+    private void ScheduleDisplacementMapRegeneration()
+    {
+        if (_sourceImage is null)
+        {
+            _displacementMap = null;
+            RefreshPreviewGeometry();
+            UpdateActiveMapPreview();
+            Update3DPreview();
+            return;
+        }
+
+        if (_displacementLevelSlider is null
+            || _displacementBlurSharpSlider is null
+            || _displacementChannelSourceComboBox is null
+            || _displacementEdgeModeComboBox is null
+            || _invertDisplacementCheckBox is null)
+        {
+            return;
+        }
+
+        BitmapSource sourceImage = _sourceImage;
+        double level = _displacementLevelSlider.Value;
+        double blurSharp = _displacementBlurSharpSlider.Value;
+        HeightChannelSource channelSource = GetSelectedDisplacementHeightChannelSource();
+        NormalMapEdgeMode edgeMode = GetSelectedDisplacementEdgeMode();
+        bool invert = _invertDisplacementCheckBox.IsChecked == true;
+        int version = Interlocked.Increment(ref _displacementPreviewUpdateVersion);
+
+        if (IsDisplacementTabActive() && _exportMapButton is not null)
+        {
+            _exportMapButton.IsEnabled = false;
+        }
+
+        _pendingDisplacementPreviewRequest = new DisplacementPreviewRenderRequest(
+            version,
+            sourceImage,
+            level,
+            blurSharp,
+            channelSource,
+            edgeMode,
+            invert);
+
+        if (!_isDisplacementPreviewWorkerRunning)
+        {
+            _isDisplacementPreviewWorkerRunning = true;
+            _ = RunDisplacementPreviewWorkerAsync();
+        }
+    }
+
+    private async Task RunNormalPreviewWorkerAsync()
     {
         while (true)
         {
-            PreviewRenderRequest? request = _pendingPreviewRequest;
+            NormalPreviewRenderRequest? request = _pendingNormalPreviewRequest;
             if (request is null)
             {
-                _isPreviewWorkerRunning = false;
+                _isNormalPreviewWorkerRunning = false;
                 return;
             }
 
-            _pendingPreviewRequest = null;
+            _pendingNormalPreviewRequest = null;
 
-            await RenderPreviewAsync(request.Value);
+            await RenderNormalPreviewAsync(request.Value);
 
-            if (_pendingPreviewRequest is not null)
+            if (_pendingNormalPreviewRequest is not null)
             {
                 await Task.Yield();
             }
         }
     }
 
-    private async Task RenderPreviewAsync(PreviewRenderRequest request)
+    private async Task RunDisplacementPreviewWorkerAsync()
+    {
+        while (true)
+        {
+            DisplacementPreviewRenderRequest? request = _pendingDisplacementPreviewRequest;
+            if (request is null)
+            {
+                _isDisplacementPreviewWorkerRunning = false;
+                return;
+            }
+
+            _pendingDisplacementPreviewRequest = null;
+
+            await RenderDisplacementPreviewAsync(request.Value);
+
+            if (_pendingDisplacementPreviewRequest is not null)
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task RenderNormalPreviewAsync(NormalPreviewRenderRequest request)
     {
         try
         {
@@ -370,53 +618,72 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (_normalPreviewImage is null || _exportNormalMapButton is null)
-            {
-                return;
-            }
-
             _normalMap = normalMap;
-            _normalPreviewImage.Source = normalMap;
-            Update3DPreview(normalMap);
-            _exportNormalMapButton.IsEnabled = true;
+            UpdateActiveMapPreview();
+            Update3DPreview();
         }
         catch (Exception exception)
         {
-            if (request.Version != _previewUpdateVersion || !ReferenceEquals(_sourceImage, request.SourceImage))
+            if (request.Version != _normalPreviewUpdateVersion || !ReferenceEquals(_sourceImage, request.SourceImage))
             {
                 return;
             }
 
             _normalMap = null;
-            Update3DPreview(null);
-
-            if (_normalPreviewImage is not null)
-            {
-                _normalPreviewImage.Source = null;
-            }
-
-            if (_exportNormalMapButton is not null)
-            {
-                _exportNormalMapButton.IsEnabled = false;
-            }
+            UpdateActiveMapPreview();
+            Update3DPreview();
 
             ShowError($"The normal map could not be generated.\n\n{exception.Message}");
         }
     }
 
+    private async Task RenderDisplacementPreviewAsync(DisplacementPreviewRenderRequest request)
+    {
+        try
+        {
+            BitmapSource? displacementMap = await Task.Run(
+                () => ImageProcessing.NormalMapGenerator.GenerateDisplacement(
+                    request.SourceImage,
+                    request.Level,
+                    request.BlurSharp,
+                    request.Invert,
+                    request.ChannelSource,
+                    request.EdgeMode));
+
+            if (displacementMap is null || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
+            _displacementMap = displacementMap;
+            RefreshPreviewGeometry();
+            UpdateActiveMapPreview();
+            Update3DPreview();
+        }
+        catch (Exception exception)
+        {
+            if (request.Version != _displacementPreviewUpdateVersion || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
+            _displacementMap = null;
+            RefreshPreviewGeometry();
+            UpdateActiveMapPreview();
+            Update3DPreview();
+
+            ShowError($"The displacement map could not be generated.\n\n{exception.Message}");
+        }
+    }
+
     private void UseHeightmapAlbedoChanged(object sender, RoutedEventArgs e)
     {
-        Update3DPreview(_normalMap);
+        Update3DPreview();
     }
 
     private void PreviewShapeChanged(object sender, RoutedEventArgs e)
     {
-        if (_previewModel is null)
-        {
-            return;
-        }
-
-        _previewModel.Geometry = CreatePreviewGeometry(GetSelectedPreviewShape());
+        RefreshPreviewGeometry();
     }
 
     private void Initialize3DPreview()
@@ -440,7 +707,7 @@ public partial class MainWindow : Window
             _previewMaterial = CreatePreviewMaterial();
             _previewModel = new MeshGeometryModel3D
             {
-                Geometry = CreatePreviewGeometry(GetSelectedPreviewShape()),
+                Geometry = CreateCurrentPreviewGeometry(),
                 Material = _previewMaterial,
                 CullMode = SharpDX.Direct3D11.CullMode.Back,
                 IsHitTestVisible = false
@@ -496,7 +763,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Update3DPreview(BitmapSource? normalMap)
+    private void Update3DPreview()
     {
         if (!_is3DPreviewAvailable || _previewMaterial is null || _previewModel is null)
         {
@@ -505,18 +772,26 @@ public partial class MainWindow : Window
 
         try
         {
-            if (normalMap is null)
+            if (_sourceImage is null)
             {
-                _previewMaterial.NormalMap = null;
-                _previewMaterial.RenderNormalMap = false;
-                _previewMaterial.DiffuseMap = null;
-                _previewMaterial.RenderDiffuseMap = false;
                 _previewModel.Visibility = Visibility.Hidden;
                 return;
             }
 
-            _previewMaterial.NormalMap = CreateTextureModel(normalMap);
-            _previewMaterial.RenderNormalMap = true;
+            if (_useNormalMapCheckBox?.IsChecked == true && _normalMap is not null)
+            {
+                _previewMaterial.NormalMap = CreateTextureModel(_normalMap);
+                _previewMaterial.RenderNormalMap = true;
+            }
+            else
+            {
+                _previewMaterial.NormalMap = null;
+                _previewMaterial.RenderNormalMap = false;
+            }
+
+            _previewMaterial.DisplacementMap = null;
+            _previewMaterial.RenderDisplacementMap = false;
+            _previewMaterial.EnableTessellation = false;
 
             if (_useHeightmapAlbedoCheckBox?.IsChecked == true && _sourceImage is not null)
             {
@@ -552,8 +827,43 @@ public partial class MainWindow : Window
             SpecularColor = new Color4(0.08f, 0.08f, 0.08f, 1.0f),
             SpecularShininess = 16,
             RenderDiffuseMap = false,
-            RenderNormalMap = false
+            RenderNormalMap = false,
+            RenderDisplacementMap = false,
+            EnableTessellation = false
         };
+    }
+
+    private void UpdateActiveMapPreview()
+    {
+        if (_generatedMapPreviewImage is null || _generatedMapPreviewTitle is null || _exportMapButton is null)
+        {
+            return;
+        }
+
+        if (IsDisplacementTabActive())
+        {
+            _generatedMapPreviewTitle.Text = "Generated Displacement Map";
+            _generatedMapPreviewImage.Source = _displacementMap;
+            _exportMapButton.Content = "Export Displacement Map";
+            _exportMapButton.IsEnabled = _displacementMap is not null;
+        }
+        else
+        {
+            _generatedMapPreviewTitle.Text = "Generated Normal Map";
+            _generatedMapPreviewImage.Source = _normalMap;
+            _exportMapButton.Content = "Export Normal Map";
+            _exportMapButton.IsEnabled = _normalMap is not null;
+        }
+    }
+
+    private BitmapSource? GetActiveGeneratedMap()
+    {
+        return IsDisplacementTabActive() ? _displacementMap : _normalMap;
+    }
+
+    private bool IsDisplacementTabActive()
+    {
+        return _mapSettingsTabControl?.SelectedIndex == 1;
     }
 
     private PreviewShape GetSelectedPreviewShape()
@@ -601,61 +911,226 @@ public partial class MainWindow : Window
             : NormalMapEdgeMode.Clamp;
     }
 
-    private static MeshGeometry3D CreatePreviewGeometry(PreviewShape shape)
+    private HeightChannelSource GetSelectedDisplacementHeightChannelSource()
+    {
+        if (_displacementChannelSourceComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return HeightChannelSource.Luminance;
+        }
+
+        return (item.Tag as string) switch
+        {
+            "Red" => HeightChannelSource.Red,
+            "Green" => HeightChannelSource.Green,
+            "Blue" => HeightChannelSource.Blue,
+            "Alpha" => HeightChannelSource.Alpha,
+            _ => HeightChannelSource.Luminance
+        };
+    }
+
+    private NormalMapEdgeMode GetSelectedDisplacementEdgeMode()
+    {
+        if (_displacementEdgeModeComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return NormalMapEdgeMode.Clamp;
+        }
+
+        return string.Equals(item.Tag as string, "Wrap", StringComparison.OrdinalIgnoreCase)
+            ? NormalMapEdgeMode.Wrap
+            : NormalMapEdgeMode.Clamp;
+    }
+
+    private double GetDisplacementHeightScale()
+    {
+        return _displacementHeightScaleSlider?.Value ?? DefaultDisplacementHeightScale;
+    }
+
+    private void RefreshPreviewGeometry()
+    {
+        if (!_is3DPreviewAvailable || _previewModel is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _previewModel.Geometry = CreateCurrentPreviewGeometry();
+        }
+        catch (Exception exception)
+        {
+            _is3DPreviewAvailable = false;
+            if (_preview3DStatusText is not null)
+            {
+                _preview3DStatusText.Visibility = Visibility.Visible;
+            }
+
+            ShowError($"The 3D preview geometry could not be updated.\n\n{exception.Message}");
+        }
+    }
+
+    private void SchedulePreviewGeometryRefresh()
+    {
+        if (!_is3DPreviewAvailable || _previewModel is null)
+        {
+            return;
+        }
+
+        BitmapSource? displacementMap = _useDisplacementMapCheckBox?.IsChecked == true ? _displacementMap : null;
+        double heightScale = displacementMap is not null ? GetDisplacementHeightScale() : 0.0;
+        int version = Interlocked.Increment(ref _previewGeometryUpdateVersion);
+
+        _pendingPreviewGeometryRequest = new PreviewGeometryRenderRequest(
+            version,
+            GetSelectedPreviewShape(),
+            displacementMap,
+            heightScale);
+
+        if (!_isPreviewGeometryWorkerRunning)
+        {
+            _isPreviewGeometryWorkerRunning = true;
+            _ = RunPreviewGeometryWorkerAsync();
+        }
+    }
+
+    private async Task RunPreviewGeometryWorkerAsync()
+    {
+        while (true)
+        {
+            PreviewGeometryRenderRequest? request = _pendingPreviewGeometryRequest;
+            if (request is null)
+            {
+                _isPreviewGeometryWorkerRunning = false;
+                return;
+            }
+
+            _pendingPreviewGeometryRequest = null;
+            await RenderPreviewGeometryAsync(request.Value);
+
+            if (_pendingPreviewGeometryRequest is not null)
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task RenderPreviewGeometryAsync(PreviewGeometryRenderRequest request)
+    {
+        try
+        {
+            MeshGeometry3D geometry = await Task.Run(() =>
+            {
+                DisplacementSampler? displacementSampler = request.DisplacementMap is not null && request.HeightScale > 0.0
+                    ? new DisplacementSampler(request.DisplacementMap)
+                    : null;
+
+                return CreatePreviewGeometry(request.Shape, displacementSampler, request.HeightScale);
+            });
+
+            if (request.Version != _previewGeometryUpdateVersion || _previewModel is null)
+            {
+                return;
+            }
+
+            _previewModel.Geometry = geometry;
+            Update3DPreview();
+        }
+        catch (Exception exception)
+        {
+            if (request.Version != _previewGeometryUpdateVersion)
+            {
+                return;
+            }
+
+            _is3DPreviewAvailable = false;
+            if (_preview3DStatusText is not null)
+            {
+                _preview3DStatusText.Visibility = Visibility.Visible;
+            }
+
+            ShowError($"The 3D preview geometry could not be updated.\n\n{exception.Message}");
+        }
+    }
+
+    private MeshGeometry3D CreateCurrentPreviewGeometry()
+    {
+        DisplacementSampler? displacementSampler = null;
+        double heightScale = 0.0;
+        if (_useDisplacementMapCheckBox?.IsChecked == true
+            && _displacementMap is not null
+            && GetDisplacementHeightScale() > 0.0)
+        {
+            displacementSampler = new DisplacementSampler(_displacementMap);
+            heightScale = GetDisplacementHeightScale();
+        }
+
+        return CreatePreviewGeometry(GetSelectedPreviewShape(), displacementSampler, heightScale);
+    }
+
+    private static MeshGeometry3D CreatePreviewGeometry(
+        PreviewShape shape,
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
         return shape switch
         {
-            PreviewShape.Plane => CreatePreviewPlaneGeometry(),
-            PreviewShape.Sphere => CreatePreviewSphereGeometry(),
-            PreviewShape.Cylinder => CreatePreviewCylinderGeometry(),
-            _ => CreatePreviewCubeGeometry()
+            PreviewShape.Plane => CreatePreviewPlaneGeometry(displacementSampler, heightScale),
+            PreviewShape.Sphere => CreatePreviewSphereGeometry(displacementSampler, heightScale),
+            PreviewShape.Cylinder => CreatePreviewCylinderGeometry(displacementSampler, heightScale),
+            _ => CreatePreviewCubeGeometry(displacementSampler, heightScale)
         };
     }
 
-    private static MeshGeometry3D CreatePreviewPlaneGeometry()
+    private static MeshGeometry3D CreatePreviewPlaneGeometry(
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
+        Vector3Collection positions = new();
+        Vector2Collection textureCoordinates = new();
+        IntCollection indices = new();
+        Vector3Collection normals = new();
+        Vector3Collection tangents = new();
+        Vector3Collection biTangents = new();
+
+        Vector3 normal = new(0.0f, 0.0f, 1.0f);
+        Vector3 tangent = new(1.0f, 0.0f, 0.0f);
+        Vector3 bitangent = new(0.0f, 1.0f, 0.0f);
+
+        for (int y = 0; y <= PreviewPlaneSubdivisions; y++)
+        {
+            float fy = y / (float)PreviewPlaneSubdivisions;
+            float v = 1.0f - fy;
+            float py = -1.0f + (2.0f * fy);
+
+            for (int x = 0; x <= PreviewPlaneSubdivisions; x++)
+            {
+                float u = x / (float)PreviewPlaneSubdivisions;
+                float px = -1.0f + (2.0f * u);
+                Vector3 position = ApplyDisplacement(new Vector3(px, py, 0.0f), normal, displacementSampler, heightScale, u, v);
+
+                positions.Add(position);
+                textureCoordinates.Add(new Vector2(u, v));
+                normals.Add(normal);
+                tangents.Add(tangent);
+                biTangents.Add(bitangent);
+            }
+        }
+
+        AddGridIndices(indices, PreviewPlaneSubdivisions, PreviewPlaneSubdivisions, reverseWinding: false);
+
         return new MeshGeometry3D
         {
-            Positions = new Vector3Collection
-            {
-                new(-1.0f, -1.0f, 0.0f),
-                new(1.0f, -1.0f, 0.0f),
-                new(1.0f, 1.0f, 0.0f),
-                new(-1.0f, 1.0f, 0.0f)
-            },
-            TextureCoordinates = new Vector2Collection
-            {
-                new(0.0f, 1.0f),
-                new(1.0f, 1.0f),
-                new(1.0f, 0.0f),
-                new(0.0f, 0.0f)
-            },
-            Indices = new IntCollection { 0, 1, 2, 0, 2, 3 },
-            Normals = new Vector3Collection
-            {
-                new(0.0f, 0.0f, 1.0f),
-                new(0.0f, 0.0f, 1.0f),
-                new(0.0f, 0.0f, 1.0f),
-                new(0.0f, 0.0f, 1.0f)
-            },
-            Tangents = new Vector3Collection
-            {
-                new(1.0f, 0.0f, 0.0f),
-                new(1.0f, 0.0f, 0.0f),
-                new(1.0f, 0.0f, 0.0f),
-                new(1.0f, 0.0f, 0.0f)
-            },
-            BiTangents = new Vector3Collection
-            {
-                new(0.0f, 1.0f, 0.0f),
-                new(0.0f, 1.0f, 0.0f),
-                new(0.0f, 1.0f, 0.0f),
-                new(0.0f, 1.0f, 0.0f)
-            }
+            Positions = positions,
+            TextureCoordinates = textureCoordinates,
+            Indices = indices,
+            Normals = normals,
+            Tangents = tangents,
+            BiTangents = biTangents
         };
     }
 
-    private static MeshGeometry3D CreatePreviewCubeGeometry()
+    private static MeshGeometry3D CreatePreviewCubeGeometry(
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
         Vector3Collection positions = new();
         Vector2Collection textureCoordinates = new();
@@ -682,11 +1157,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(0.0f, 0.0f, halfSize),
-            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
-            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
-            halfSize);
+            new Vector3(0.0f, 0.0f, halfSize),
+            new Vector3(0.0f, 0.0f, 1.0f),
+            new Vector3(1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 1.0f, 0.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
         AddCubeFace(
             positions,
             textureCoordinates,
@@ -694,11 +1171,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(0.0f, 0.0f, -halfSize),
-            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
-            new System.Numerics.Vector3(-1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
-            halfSize);
+            new Vector3(0.0f, 0.0f, -halfSize),
+            new Vector3(0.0f, 0.0f, -1.0f),
+            new Vector3(-1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 1.0f, 0.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
         AddCubeFace(
             positions,
             textureCoordinates,
@@ -706,11 +1185,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(halfSize, 0.0f, 0.0f),
-            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
-            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
-            halfSize);
+            new Vector3(halfSize, 0.0f, 0.0f),
+            new Vector3(1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 0.0f, -1.0f),
+            new Vector3(0.0f, 1.0f, 0.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
         AddCubeFace(
             positions,
             textureCoordinates,
@@ -718,11 +1199,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(-halfSize, 0.0f, 0.0f),
-            new System.Numerics.Vector3(-1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
-            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
-            halfSize);
+            new Vector3(-halfSize, 0.0f, 0.0f),
+            new Vector3(-1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 0.0f, 1.0f),
+            new Vector3(0.0f, 1.0f, 0.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
         AddCubeFace(
             positions,
             textureCoordinates,
@@ -730,11 +1213,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(0.0f, halfSize, 0.0f),
-            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
-            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
-            halfSize);
+            new Vector3(0.0f, halfSize, 0.0f),
+            new Vector3(0.0f, 1.0f, 0.0f),
+            new Vector3(1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 0.0f, -1.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
         AddCubeFace(
             positions,
             textureCoordinates,
@@ -742,11 +1227,13 @@ public partial class MainWindow : Window
             normals,
             tangents,
             biTangents,
-            new System.Numerics.Vector3(0.0f, -halfSize, 0.0f),
-            new System.Numerics.Vector3(0.0f, -1.0f, 0.0f),
-            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
-            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
-            halfSize);
+            new Vector3(0.0f, -halfSize, 0.0f),
+            new Vector3(0.0f, -1.0f, 0.0f),
+            new Vector3(1.0f, 0.0f, 0.0f),
+            new Vector3(0.0f, 0.0f, 1.0f),
+            halfSize,
+            displacementSampler,
+            heightScale);
 
         return geometry;
     }
@@ -758,39 +1245,43 @@ public partial class MainWindow : Window
         Vector3Collection normals,
         Vector3Collection tangents,
         Vector3Collection biTangents,
-        System.Numerics.Vector3 center,
-        System.Numerics.Vector3 normal,
-        System.Numerics.Vector3 tangent,
-        System.Numerics.Vector3 bitangent,
-        float halfSize)
+        Vector3 center,
+        Vector3 normal,
+        Vector3 tangent,
+        Vector3 bitangent,
+        float halfSize,
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
         int startIndex = positions.Count;
-        positions.Add(center - (tangent * halfSize) - (bitangent * halfSize));
-        positions.Add(center + (tangent * halfSize) - (bitangent * halfSize));
-        positions.Add(center + (tangent * halfSize) + (bitangent * halfSize));
-        positions.Add(center - (tangent * halfSize) + (bitangent * halfSize));
 
-        textureCoordinates.Add(new System.Numerics.Vector2(0.0f, 1.0f));
-        textureCoordinates.Add(new System.Numerics.Vector2(1.0f, 1.0f));
-        textureCoordinates.Add(new System.Numerics.Vector2(1.0f, 0.0f));
-        textureCoordinates.Add(new System.Numerics.Vector2(0.0f, 0.0f));
-
-        indices.Add(startIndex);
-        indices.Add(startIndex + 1);
-        indices.Add(startIndex + 2);
-        indices.Add(startIndex);
-        indices.Add(startIndex + 2);
-        indices.Add(startIndex + 3);
-
-        for (int i = 0; i < 4; i++)
+        for (int y = 0; y <= PreviewCubeSubdivisions; y++)
         {
-            normals.Add(normal);
-            tangents.Add(tangent);
-            biTangents.Add(bitangent);
+            float fy = y / (float)PreviewCubeSubdivisions;
+            float v = 1.0f - fy;
+            float localY = -halfSize + (2.0f * halfSize * fy);
+
+            for (int x = 0; x <= PreviewCubeSubdivisions; x++)
+            {
+                float u = x / (float)PreviewCubeSubdivisions;
+                float localX = -halfSize + (2.0f * halfSize * u);
+                Vector3 position = center + (tangent * localX) + (bitangent * localY);
+                float edgeFade = CalculateUvEdgeFade(u, v, PreviewHardEdgeFadeWidth);
+
+                positions.Add(ApplyDisplacement(position, normal, displacementSampler, heightScale, u, v, edgeFade));
+                textureCoordinates.Add(new Vector2(u, v));
+                normals.Add(normal);
+                tangents.Add(tangent);
+                biTangents.Add(bitangent);
+            }
         }
+
+        AddGridIndices(indices, PreviewCubeSubdivisions, PreviewCubeSubdivisions, startIndex, reverseWinding: false);
     }
 
-    private static MeshGeometry3D CreatePreviewSphereGeometry()
+    private static MeshGeometry3D CreatePreviewSphereGeometry(
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
         Vector3Collection positions = new();
         Vector2Collection textureCoordinates = new();
@@ -800,39 +1291,38 @@ public partial class MainWindow : Window
         Vector3Collection biTangents = new();
 
         const float radius = 0.85f;
-        const int latitudeSegments = 24;
-        const int longitudeSegments = 48;
 
-        for (int latitude = 0; latitude <= latitudeSegments; latitude++)
+        for (int latitude = 0; latitude <= PreviewSphereLatitudeSegments; latitude++)
         {
-            float v = latitude / (float)latitudeSegments;
+            float v = latitude / (float)PreviewSphereLatitudeSegments;
             float theta = MathF.PI * v;
             float sinTheta = MathF.Sin(theta);
             float cosTheta = MathF.Cos(theta);
 
-            for (int longitude = 0; longitude <= longitudeSegments; longitude++)
+            for (int longitude = 0; longitude <= PreviewSphereLongitudeSegments; longitude++)
             {
-                float u = longitude / (float)longitudeSegments;
+                float u = longitude / (float)PreviewSphereLongitudeSegments;
                 float phi = MathF.Tau * u;
                 float sinPhi = MathF.Sin(phi);
                 float cosPhi = MathF.Cos(phi);
 
-                System.Numerics.Vector3 normal = new(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
-                System.Numerics.Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
-                System.Numerics.Vector3 bitangent = new(cosTheta * cosPhi, -sinTheta, cosTheta * sinPhi);
+                Vector3 normal = new(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
+                Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
+                Vector3 bitangent = new(cosTheta * cosPhi, -sinTheta, cosTheta * sinPhi);
+                Vector3 position = ApplyDisplacement(normal * radius, normal, displacementSampler, heightScale, u, v);
 
-                positions.Add(normal * radius);
-                textureCoordinates.Add(new System.Numerics.Vector2(u, v));
+                positions.Add(position);
+                textureCoordinates.Add(new Vector2(u, v));
                 normals.Add(normal);
                 tangents.Add(tangent);
                 biTangents.Add(bitangent);
             }
         }
 
-        int rowStride = longitudeSegments + 1;
-        for (int latitude = 0; latitude < latitudeSegments; latitude++)
+        int rowStride = PreviewSphereLongitudeSegments + 1;
+        for (int latitude = 0; latitude < PreviewSphereLatitudeSegments; latitude++)
         {
-            for (int longitude = 0; longitude < longitudeSegments; longitude++)
+            for (int longitude = 0; longitude < PreviewSphereLongitudeSegments; longitude++)
             {
                 int current = (latitude * rowStride) + longitude;
                 int next = current + rowStride;
@@ -857,7 +1347,9 @@ public partial class MainWindow : Window
         };
     }
 
-    private static MeshGeometry3D CreatePreviewCylinderGeometry()
+    private static MeshGeometry3D CreatePreviewCylinderGeometry(
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
         Vector3Collection positions = new();
         Vector2Collection textureCoordinates = new();
@@ -868,45 +1360,56 @@ public partial class MainWindow : Window
 
         const float radius = 0.72f;
         const float halfHeight = 0.82f;
-        const int segments = 48;
 
-        for (int segment = 0; segment <= segments; segment++)
+        for (int y = 0; y <= PreviewCylinderHeightSegments; y++)
         {
-            float u = segment / (float)segments;
-            float phi = MathF.Tau * u;
-            float sinPhi = MathF.Sin(phi);
-            float cosPhi = MathF.Cos(phi);
+            float fy = y / (float)PreviewCylinderHeightSegments;
+            float v = 1.0f - fy;
+            float py = -halfHeight + (2.0f * halfHeight * fy);
 
-            System.Numerics.Vector3 normal = new(cosPhi, 0.0f, sinPhi);
-            System.Numerics.Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
-            System.Numerics.Vector3 bitangent = new(0.0f, 1.0f, 0.0f);
+            for (int segment = 0; segment <= PreviewCylinderSegments; segment++)
+            {
+                float u = segment / (float)PreviewCylinderSegments;
+                float phi = MathF.Tau * u;
+                float sinPhi = MathF.Sin(phi);
+                float cosPhi = MathF.Cos(phi);
 
-            positions.Add(new System.Numerics.Vector3(radius * cosPhi, -halfHeight, radius * sinPhi));
-            textureCoordinates.Add(new System.Numerics.Vector2(u, 1.0f));
-            normals.Add(normal);
-            tangents.Add(tangent);
-            biTangents.Add(bitangent);
+                Vector3 normal = new(cosPhi, 0.0f, sinPhi);
+                Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
+                Vector3 bitangent = new(0.0f, 1.0f, 0.0f);
+                float verticalEdgeFade = CalculateLinearEdgeFade(fy, PreviewHardEdgeFadeWidth);
+                Vector3 position = ApplyDisplacement(
+                    new Vector3(radius * cosPhi, py, radius * sinPhi),
+                    normal,
+                    displacementSampler,
+                    heightScale,
+                    u,
+                    v,
+                    verticalEdgeFade);
 
-            positions.Add(new System.Numerics.Vector3(radius * cosPhi, halfHeight, radius * sinPhi));
-            textureCoordinates.Add(new System.Numerics.Vector2(u, 0.0f));
-            normals.Add(normal);
-            tangents.Add(tangent);
-            biTangents.Add(bitangent);
+                positions.Add(position);
+                textureCoordinates.Add(new Vector2(u, v));
+                normals.Add(normal);
+                tangents.Add(tangent);
+                biTangents.Add(bitangent);
+            }
         }
 
-        for (int segment = 0; segment < segments; segment++)
+        int rowStride = PreviewCylinderSegments + 1;
+        for (int y = 0; y < PreviewCylinderHeightSegments; y++)
         {
-            int currentBottom = segment * 2;
-            int currentTop = currentBottom + 1;
-            int nextBottom = currentBottom + 2;
-            int nextTop = currentBottom + 3;
+            for (int segment = 0; segment < PreviewCylinderSegments; segment++)
+            {
+                int current = (y * rowStride) + segment;
+                int nextRow = current + rowStride;
 
-            indices.Add(currentBottom);
-            indices.Add(currentTop);
-            indices.Add(nextBottom);
-            indices.Add(currentTop);
-            indices.Add(nextTop);
-            indices.Add(nextBottom);
+                indices.Add(current);
+                indices.Add(nextRow);
+                indices.Add(current + 1);
+                indices.Add(current + 1);
+                indices.Add(nextRow);
+                indices.Add(nextRow + 1);
+            }
         }
 
         AddCylinderCap(
@@ -918,8 +1421,9 @@ public partial class MainWindow : Window
             biTangents,
             halfHeight,
             radius,
-            segments,
-            isTop: true);
+            isTop: true,
+            displacementSampler,
+            heightScale);
         AddCylinderCap(
             positions,
             textureCoordinates,
@@ -929,8 +1433,9 @@ public partial class MainWindow : Window
             biTangents,
             -halfHeight,
             radius,
-            segments,
-            isTop: false);
+            isTop: false,
+            displacementSampler,
+            heightScale);
 
         return new MeshGeometry3D
         {
@@ -952,54 +1457,186 @@ public partial class MainWindow : Window
         Vector3Collection biTangents,
         float y,
         float radius,
-        int segments,
-        bool isTop)
+        bool isTop,
+        DisplacementSampler? displacementSampler,
+        double heightScale)
     {
-        int centerIndex = positions.Count;
-        System.Numerics.Vector3 normal = isTop
-            ? new System.Numerics.Vector3(0.0f, 1.0f, 0.0f)
-            : new System.Numerics.Vector3(0.0f, -1.0f, 0.0f);
-        System.Numerics.Vector3 tangent = new(1.0f, 0.0f, 0.0f);
-        System.Numerics.Vector3 bitangent = isTop
-            ? new System.Numerics.Vector3(0.0f, 0.0f, -1.0f)
-            : new System.Numerics.Vector3(0.0f, 0.0f, 1.0f);
+        int startIndex = positions.Count;
+        Vector3 normal = isTop ? new Vector3(0.0f, 1.0f, 0.0f) : new Vector3(0.0f, -1.0f, 0.0f);
+        Vector3 tangent = new(1.0f, 0.0f, 0.0f);
+        Vector3 bitangent = isTop ? new Vector3(0.0f, 0.0f, -1.0f) : new Vector3(0.0f, 0.0f, 1.0f);
 
-        positions.Add(new System.Numerics.Vector3(0.0f, y, 0.0f));
-        textureCoordinates.Add(new System.Numerics.Vector2(0.5f, 0.5f));
-        normals.Add(normal);
-        tangents.Add(tangent);
-        biTangents.Add(bitangent);
-
-        for (int segment = 0; segment <= segments; segment++)
+        for (int ring = 0; ring <= PreviewCylinderCapRings; ring++)
         {
-            float u = segment / (float)segments;
-            float phi = MathF.Tau * u;
-            float sinPhi = MathF.Sin(phi);
-            float cosPhi = MathF.Cos(phi);
+            float ringRadius = ring / (float)PreviewCylinderCapRings;
 
-            positions.Add(new System.Numerics.Vector3(radius * cosPhi, y, radius * sinPhi));
-            textureCoordinates.Add(new System.Numerics.Vector2((cosPhi * 0.5f) + 0.5f, (sinPhi * 0.5f) + 0.5f));
-            normals.Add(normal);
-            tangents.Add(tangent);
-            biTangents.Add(bitangent);
+            for (int segment = 0; segment <= PreviewCylinderSegments; segment++)
+            {
+                float angle = segment / (float)PreviewCylinderSegments;
+                float phi = MathF.Tau * angle;
+                float sinPhi = MathF.Sin(phi);
+                float cosPhi = MathF.Cos(phi);
+                float u = (cosPhi * ringRadius * 0.5f) + 0.5f;
+                float v = (sinPhi * ringRadius * 0.5f) + 0.5f;
+                Vector3 position = new(radius * ringRadius * cosPhi, y, radius * ringRadius * sinPhi);
+
+                float edgeFade = CalculateRadialEdgeFade(ringRadius, PreviewHardEdgeFadeWidth);
+                positions.Add(ApplyDisplacement(position, normal, displacementSampler, heightScale, u, v, edgeFade));
+                textureCoordinates.Add(new Vector2(u, v));
+                normals.Add(normal);
+                tangents.Add(tangent);
+                biTangents.Add(bitangent);
+            }
         }
 
-        for (int segment = 0; segment < segments; segment++)
+        int rowStride = PreviewCylinderSegments + 1;
+        for (int ring = 0; ring < PreviewCylinderCapRings; ring++)
         {
-            int current = centerIndex + 1 + segment;
-            int next = current + 1;
+            for (int segment = 0; segment < PreviewCylinderSegments; segment++)
+            {
+                int innerCurrent = startIndex + (ring * rowStride) + segment;
+                int innerNext = innerCurrent + 1;
+                int outerCurrent = innerCurrent + rowStride;
+                int outerNext = outerCurrent + 1;
 
-            indices.Add(centerIndex);
-            if (isTop)
-            {
-                indices.Add(next);
-                indices.Add(current);
+                if (isTop)
+                {
+                    indices.Add(innerCurrent);
+                    indices.Add(outerNext);
+                    indices.Add(outerCurrent);
+                    indices.Add(innerCurrent);
+                    indices.Add(innerNext);
+                    indices.Add(outerNext);
+                }
+                else
+                {
+                    indices.Add(innerCurrent);
+                    indices.Add(outerCurrent);
+                    indices.Add(outerNext);
+                    indices.Add(innerCurrent);
+                    indices.Add(outerNext);
+                    indices.Add(innerNext);
+                }
             }
-            else
+        }
+    }
+
+    private static void AddGridIndices(
+        IntCollection indices,
+        int columns,
+        int rows,
+        int startIndex = 0,
+        bool reverseWinding = false)
+    {
+        int rowStride = columns + 1;
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < columns; x++)
             {
-                indices.Add(current);
-                indices.Add(next);
+                int current = startIndex + (y * rowStride) + x;
+                int next = current + rowStride;
+
+                if (reverseWinding)
+                {
+                    indices.Add(current);
+                    indices.Add(next + 1);
+                    indices.Add(current + 1);
+                    indices.Add(current);
+                    indices.Add(next);
+                    indices.Add(next + 1);
+                }
+                else
+                {
+                    indices.Add(current);
+                    indices.Add(current + 1);
+                    indices.Add(next + 1);
+                    indices.Add(current);
+                    indices.Add(next + 1);
+                    indices.Add(next);
+                }
             }
+        }
+    }
+
+    private static Vector3 ApplyDisplacement(
+        Vector3 position,
+        Vector3 normal,
+        DisplacementSampler? displacementSampler,
+        double heightScale,
+        float u,
+        float v,
+        float displacementWeight = 1.0f)
+    {
+        if (displacementSampler is null || heightScale <= 0.0 || displacementWeight <= 0.0f)
+        {
+            return position;
+        }
+
+        double height = displacementSampler.Sample(u, v);
+        return position + (normal * (float)((height - 0.5) * heightScale * displacementWeight));
+    }
+
+    private static float CalculateUvEdgeFade(float u, float v, float fadeWidth)
+    {
+        return MathF.Min(
+            CalculateLinearEdgeFade(u, fadeWidth),
+            CalculateLinearEdgeFade(v, fadeWidth));
+    }
+
+    private static float CalculateLinearEdgeFade(float value, float fadeWidth)
+    {
+        if (fadeWidth <= 0.0f)
+        {
+            return 1.0f;
+        }
+
+        return Math.Clamp(MathF.Min(value, 1.0f - value) / fadeWidth, 0.0f, 1.0f);
+    }
+
+    private static float CalculateRadialEdgeFade(float radius, float fadeWidth)
+    {
+        if (fadeWidth <= 0.0f)
+        {
+            return 1.0f;
+        }
+
+        return Math.Clamp((1.0f - radius) / fadeWidth, 0.0f, 1.0f);
+    }
+
+    private sealed class DisplacementSampler
+    {
+        private readonly byte[] _pixels;
+        private readonly int _width;
+        private readonly int _height;
+        private readonly int _stride;
+
+        public DisplacementSampler(BitmapSource bitmap)
+        {
+            BitmapSource source = bitmap.Format == PixelFormats.Bgra32
+                ? bitmap
+                : new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+
+            _width = source.PixelWidth;
+            _height = source.PixelHeight;
+            _stride = _width * 4;
+            _pixels = new byte[_stride * _height];
+            source.CopyPixels(_pixels, _stride, 0);
+        }
+
+        public double Sample(float u, float v)
+        {
+            if (_width <= 0 || _height <= 0)
+            {
+                return 0.5;
+            }
+
+            double clampedU = Math.Clamp(u, 0.0f, 1.0f);
+            double clampedV = Math.Clamp(v, 0.0f, 1.0f);
+            int x = (int)Math.Round(clampedU * (_width - 1));
+            int y = (int)Math.Round(clampedV * (_height - 1));
+            int index = (y * _stride) + (x * 4);
+
+            return _pixels[index] / 255.0;
         }
     }
 
@@ -1013,7 +1650,7 @@ public partial class MainWindow : Window
         return new TextureModel(stream, autoCloseStream: true);
     }
 
-    private readonly record struct PreviewRenderRequest(
+    private readonly record struct NormalPreviewRenderRequest(
         int Version,
         BitmapSource SourceImage,
         double Strength,
@@ -1023,6 +1660,21 @@ public partial class MainWindow : Window
         NormalMapEdgeMode EdgeMode,
         bool InvertX,
         bool InvertY);
+
+    private readonly record struct DisplacementPreviewRenderRequest(
+        int Version,
+        BitmapSource SourceImage,
+        double Level,
+        double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
+        bool Invert);
+
+    private readonly record struct PreviewGeometryRenderRequest(
+        int Version,
+        PreviewShape Shape,
+        BitmapSource? DisplacementMap,
+        double HeightScale);
 
     private void UpdateStrengthText()
     {
@@ -1067,6 +1719,51 @@ public partial class MainWindow : Window
         }
 
         SetBlurSharpText(_blurSharpSlider.Value);
+    }
+
+    private void UpdateDisplacementLevelText()
+    {
+        if (_displacementLevelValueText is null || _displacementLevelSlider is null)
+        {
+            return;
+        }
+
+        if (_displacementLevelValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetDisplacementLevelText(_displacementLevelSlider.Value);
+    }
+
+    private void UpdateDisplacementBlurSharpText()
+    {
+        if (_displacementBlurSharpValueText is null || _displacementBlurSharpSlider is null)
+        {
+            return;
+        }
+
+        if (_displacementBlurSharpValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetDisplacementBlurSharpText(_displacementBlurSharpSlider.Value);
+    }
+
+    private void UpdateDisplacementHeightScaleText()
+    {
+        if (_displacementHeightScaleValueText is null || _displacementHeightScaleSlider is null)
+        {
+            return;
+        }
+
+        if (_displacementHeightScaleValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetDisplacementHeightScaleText(_displacementHeightScaleSlider.Value);
     }
 
     private static void AdjustSlider(Slider slider, double delta)
@@ -1127,6 +1824,51 @@ public partial class MainWindow : Window
         SetBlurSharpText(_blurSharpSlider.Value);
     }
 
+    private void CommitDisplacementLevelText()
+    {
+        if (_displacementLevelValueText is null || _displacementLevelSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(_displacementLevelValueText.Text, out double level))
+        {
+            _displacementLevelSlider.Value = Math.Clamp(level, _displacementLevelSlider.Minimum, _displacementLevelSlider.Maximum);
+        }
+
+        SetDisplacementLevelText(_displacementLevelSlider.Value);
+    }
+
+    private void CommitDisplacementBlurSharpText()
+    {
+        if (_displacementBlurSharpValueText is null || _displacementBlurSharpSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(_displacementBlurSharpValueText.Text, out double blurSharp))
+        {
+            _displacementBlurSharpSlider.Value = Math.Clamp(blurSharp, _displacementBlurSharpSlider.Minimum, _displacementBlurSharpSlider.Maximum);
+        }
+
+        SetDisplacementBlurSharpText(_displacementBlurSharpSlider.Value);
+    }
+
+    private void CommitDisplacementHeightScaleText()
+    {
+        if (_displacementHeightScaleValueText is null || _displacementHeightScaleSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(_displacementHeightScaleValueText.Text, out double heightScale))
+        {
+            _displacementHeightScaleSlider.Value = Math.Clamp(heightScale, _displacementHeightScaleSlider.Minimum, _displacementHeightScaleSlider.Maximum);
+        }
+
+        SetDisplacementHeightScaleText(_displacementHeightScaleSlider.Value);
+    }
+
     private void SetStrengthText(double value)
     {
         if (_strengthValueText is null)
@@ -1157,11 +1899,43 @@ public partial class MainWindow : Window
         _blurSharpValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
+    private void SetDisplacementLevelText(double value)
+    {
+        if (_displacementLevelValueText is null)
+        {
+            return;
+        }
+
+        _displacementLevelValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
+    private void SetDisplacementBlurSharpText(double value)
+    {
+        if (_displacementBlurSharpValueText is null)
+        {
+            return;
+        }
+
+        _displacementBlurSharpValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
+    private void SetDisplacementHeightScaleText(double value)
+    {
+        if (_displacementHeightScaleValueText is null)
+        {
+            return;
+        }
+
+        _displacementHeightScaleValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
     private void BindNamedControls()
     {
         _sourcePreviewImage = FindRequiredControl<Image>("SourcePreviewImage");
-        _normalPreviewImage = FindRequiredControl<Image>("NormalPreviewImage");
-        _exportNormalMapButton = FindRequiredControl<Button>("ExportNormalMapButton");
+        _generatedMapPreviewImage = FindRequiredControl<Image>("GeneratedMapPreviewImage");
+        _generatedMapPreviewTitle = FindRequiredControl<TextBlock>("GeneratedMapPreviewTitle");
+        _exportMapButton = FindRequiredControl<Button>("ExportMapButton");
+        _mapSettingsTabControl = FindRequiredControl<TabControl>("MapSettingsTabControl");
         _strengthSlider = FindRequiredControl<Slider>("StrengthSlider");
         _strengthValueText = FindRequiredControl<TextBox>("StrengthValueText");
         _levelSlider = FindRequiredControl<Slider>("LevelSlider");
@@ -1172,6 +1946,17 @@ public partial class MainWindow : Window
         _edgeModeComboBox = FindRequiredControl<ComboBox>("EdgeModeComboBox");
         _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");
         _invertYCheckBox = FindRequiredControl<CheckBox>("InvertYCheckBox");
+        _displacementLevelSlider = FindRequiredControl<Slider>("DisplacementLevelSlider");
+        _displacementLevelValueText = FindRequiredControl<TextBox>("DisplacementLevelValueText");
+        _displacementBlurSharpSlider = FindRequiredControl<Slider>("DisplacementBlurSharpSlider");
+        _displacementBlurSharpValueText = FindRequiredControl<TextBox>("DisplacementBlurSharpValueText");
+        _displacementHeightScaleSlider = FindRequiredControl<Slider>("DisplacementHeightScaleSlider");
+        _displacementHeightScaleValueText = FindRequiredControl<TextBox>("DisplacementHeightScaleValueText");
+        _displacementChannelSourceComboBox = FindRequiredControl<ComboBox>("DisplacementChannelSourceComboBox");
+        _displacementEdgeModeComboBox = FindRequiredControl<ComboBox>("DisplacementEdgeModeComboBox");
+        _invertDisplacementCheckBox = FindRequiredControl<CheckBox>("InvertDisplacementCheckBox");
+        _useNormalMapCheckBox = FindRequiredControl<CheckBox>("UseNormalMapCheckBox");
+        _useDisplacementMapCheckBox = FindRequiredControl<CheckBox>("UseDisplacementMapCheckBox");
         _useHeightmapAlbedoCheckBox = FindRequiredControl<CheckBox>("UseHeightmapAlbedoCheckBox");
         _previewShapeComboBox = FindRequiredControl<ComboBox>("PreviewShapeComboBox");
         _preview3DHost = FindRequiredControl<ContentControl>("Preview3DHost");
@@ -1209,12 +1994,13 @@ public partial class MainWindow : Window
 
     private string BuildDefaultExportFileName()
     {
+        string suffix = IsDisplacementTabActive() ? "displacement" : "normal";
         if (string.IsNullOrWhiteSpace(_sourceFilePath))
         {
-            return "normal_map.png";
+            return $"{suffix}_map.png";
         }
 
-        return $"{Path.GetFileNameWithoutExtension(_sourceFilePath)}_normal.png";
+        return $"{Path.GetFileNameWithoutExtension(_sourceFilePath)}_{suffix}.png";
     }
 
     private static BitmapImage LoadBitmap(string filePath)
