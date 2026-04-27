@@ -406,11 +406,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _previewModel.Geometry = GetSelectedPreviewShape() switch
-        {
-            PreviewShape.Cube => CreatePreviewCubeGeometry(),
-            _ => CreatePreviewPlaneGeometry()
-        };
+        _previewModel.Geometry = CreatePreviewGeometry(GetSelectedPreviewShape());
     }
 
     private void Initialize3DPreview()
@@ -434,7 +430,7 @@ public partial class MainWindow : Window
             _previewMaterial = CreatePreviewMaterial();
             _previewModel = new MeshGeometryModel3D
             {
-                Geometry = CreatePreviewPlaneGeometry(),
+                Geometry = CreatePreviewGeometry(GetSelectedPreviewShape()),
                 Material = _previewMaterial,
                 CullMode = SharpDX.Direct3D11.CullMode.Back,
                 IsHitTestVisible = false
@@ -552,10 +548,29 @@ public partial class MainWindow : Window
 
     private PreviewShape GetSelectedPreviewShape()
     {
-        return _previewShapeComboBox?.SelectedItem is ComboBoxItem item
-            && string.Equals(item.Tag as string, "Cube", StringComparison.OrdinalIgnoreCase)
-            ? PreviewShape.Cube
-            : PreviewShape.Plane;
+        if (_previewShapeComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return PreviewShape.Cube;
+        }
+
+        return (item.Tag as string) switch
+        {
+            "Plane" => PreviewShape.Plane,
+            "Sphere" => PreviewShape.Sphere,
+            "Cylinder" => PreviewShape.Cylinder,
+            _ => PreviewShape.Cube
+        };
+    }
+
+    private static MeshGeometry3D CreatePreviewGeometry(PreviewShape shape)
+    {
+        return shape switch
+        {
+            PreviewShape.Plane => CreatePreviewPlaneGeometry(),
+            PreviewShape.Sphere => CreatePreviewSphereGeometry(),
+            PreviewShape.Cylinder => CreatePreviewCylinderGeometry(),
+            _ => CreatePreviewCubeGeometry()
+        };
     }
 
     private static MeshGeometry3D CreatePreviewPlaneGeometry()
@@ -733,6 +748,219 @@ public partial class MainWindow : Window
             normals.Add(normal);
             tangents.Add(tangent);
             biTangents.Add(bitangent);
+        }
+    }
+
+    private static MeshGeometry3D CreatePreviewSphereGeometry()
+    {
+        Vector3Collection positions = new();
+        Vector2Collection textureCoordinates = new();
+        IntCollection indices = new();
+        Vector3Collection normals = new();
+        Vector3Collection tangents = new();
+        Vector3Collection biTangents = new();
+
+        const float radius = 0.85f;
+        const int latitudeSegments = 24;
+        const int longitudeSegments = 48;
+
+        for (int latitude = 0; latitude <= latitudeSegments; latitude++)
+        {
+            float v = latitude / (float)latitudeSegments;
+            float theta = MathF.PI * v;
+            float sinTheta = MathF.Sin(theta);
+            float cosTheta = MathF.Cos(theta);
+
+            for (int longitude = 0; longitude <= longitudeSegments; longitude++)
+            {
+                float u = longitude / (float)longitudeSegments;
+                float phi = MathF.Tau * u;
+                float sinPhi = MathF.Sin(phi);
+                float cosPhi = MathF.Cos(phi);
+
+                System.Numerics.Vector3 normal = new(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
+                System.Numerics.Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
+                System.Numerics.Vector3 bitangent = new(cosTheta * cosPhi, -sinTheta, cosTheta * sinPhi);
+
+                positions.Add(normal * radius);
+                textureCoordinates.Add(new System.Numerics.Vector2(u, v));
+                normals.Add(normal);
+                tangents.Add(tangent);
+                biTangents.Add(bitangent);
+            }
+        }
+
+        int rowStride = longitudeSegments + 1;
+        for (int latitude = 0; latitude < latitudeSegments; latitude++)
+        {
+            for (int longitude = 0; longitude < longitudeSegments; longitude++)
+            {
+                int current = (latitude * rowStride) + longitude;
+                int next = current + rowStride;
+
+                indices.Add(current);
+                indices.Add(current + 1);
+                indices.Add(next);
+                indices.Add(current + 1);
+                indices.Add(next + 1);
+                indices.Add(next);
+            }
+        }
+
+        return new MeshGeometry3D
+        {
+            Positions = positions,
+            TextureCoordinates = textureCoordinates,
+            Indices = indices,
+            Normals = normals,
+            Tangents = tangents,
+            BiTangents = biTangents
+        };
+    }
+
+    private static MeshGeometry3D CreatePreviewCylinderGeometry()
+    {
+        Vector3Collection positions = new();
+        Vector2Collection textureCoordinates = new();
+        IntCollection indices = new();
+        Vector3Collection normals = new();
+        Vector3Collection tangents = new();
+        Vector3Collection biTangents = new();
+
+        const float radius = 0.72f;
+        const float halfHeight = 0.82f;
+        const int segments = 48;
+
+        for (int segment = 0; segment <= segments; segment++)
+        {
+            float u = segment / (float)segments;
+            float phi = MathF.Tau * u;
+            float sinPhi = MathF.Sin(phi);
+            float cosPhi = MathF.Cos(phi);
+
+            System.Numerics.Vector3 normal = new(cosPhi, 0.0f, sinPhi);
+            System.Numerics.Vector3 tangent = new(-sinPhi, 0.0f, cosPhi);
+            System.Numerics.Vector3 bitangent = new(0.0f, 1.0f, 0.0f);
+
+            positions.Add(new System.Numerics.Vector3(radius * cosPhi, -halfHeight, radius * sinPhi));
+            textureCoordinates.Add(new System.Numerics.Vector2(u, 1.0f));
+            normals.Add(normal);
+            tangents.Add(tangent);
+            biTangents.Add(bitangent);
+
+            positions.Add(new System.Numerics.Vector3(radius * cosPhi, halfHeight, radius * sinPhi));
+            textureCoordinates.Add(new System.Numerics.Vector2(u, 0.0f));
+            normals.Add(normal);
+            tangents.Add(tangent);
+            biTangents.Add(bitangent);
+        }
+
+        for (int segment = 0; segment < segments; segment++)
+        {
+            int currentBottom = segment * 2;
+            int currentTop = currentBottom + 1;
+            int nextBottom = currentBottom + 2;
+            int nextTop = currentBottom + 3;
+
+            indices.Add(currentBottom);
+            indices.Add(currentTop);
+            indices.Add(nextBottom);
+            indices.Add(currentTop);
+            indices.Add(nextTop);
+            indices.Add(nextBottom);
+        }
+
+        AddCylinderCap(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            halfHeight,
+            radius,
+            segments,
+            isTop: true);
+        AddCylinderCap(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            -halfHeight,
+            radius,
+            segments,
+            isTop: false);
+
+        return new MeshGeometry3D
+        {
+            Positions = positions,
+            TextureCoordinates = textureCoordinates,
+            Indices = indices,
+            Normals = normals,
+            Tangents = tangents,
+            BiTangents = biTangents
+        };
+    }
+
+    private static void AddCylinderCap(
+        Vector3Collection positions,
+        Vector2Collection textureCoordinates,
+        IntCollection indices,
+        Vector3Collection normals,
+        Vector3Collection tangents,
+        Vector3Collection biTangents,
+        float y,
+        float radius,
+        int segments,
+        bool isTop)
+    {
+        int centerIndex = positions.Count;
+        System.Numerics.Vector3 normal = isTop
+            ? new System.Numerics.Vector3(0.0f, 1.0f, 0.0f)
+            : new System.Numerics.Vector3(0.0f, -1.0f, 0.0f);
+        System.Numerics.Vector3 tangent = new(1.0f, 0.0f, 0.0f);
+        System.Numerics.Vector3 bitangent = isTop
+            ? new System.Numerics.Vector3(0.0f, 0.0f, -1.0f)
+            : new System.Numerics.Vector3(0.0f, 0.0f, 1.0f);
+
+        positions.Add(new System.Numerics.Vector3(0.0f, y, 0.0f));
+        textureCoordinates.Add(new System.Numerics.Vector2(0.5f, 0.5f));
+        normals.Add(normal);
+        tangents.Add(tangent);
+        biTangents.Add(bitangent);
+
+        for (int segment = 0; segment <= segments; segment++)
+        {
+            float u = segment / (float)segments;
+            float phi = MathF.Tau * u;
+            float sinPhi = MathF.Sin(phi);
+            float cosPhi = MathF.Cos(phi);
+
+            positions.Add(new System.Numerics.Vector3(radius * cosPhi, y, radius * sinPhi));
+            textureCoordinates.Add(new System.Numerics.Vector2((cosPhi * 0.5f) + 0.5f, (sinPhi * 0.5f) + 0.5f));
+            normals.Add(normal);
+            tangents.Add(tangent);
+            biTangents.Add(bitangent);
+        }
+
+        for (int segment = 0; segment < segments; segment++)
+        {
+            int current = centerIndex + 1 + segment;
+            int next = current + 1;
+
+            indices.Add(centerIndex);
+            if (isTop)
+            {
+                indices.Add(next);
+                indices.Add(current);
+            }
+            else
+            {
+                indices.Add(current);
+                indices.Add(next);
+            }
         }
     }
 
@@ -982,6 +1210,8 @@ public partial class MainWindow : Window
     private enum PreviewShape
     {
         Plane,
-        Cube
+        Cube,
+        Sphere,
+        Cylinder
     }
 }

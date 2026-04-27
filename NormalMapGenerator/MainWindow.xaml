@@ -335,11 +335,15 @@
                                   Grid.Column="1"
                                   MinWidth="120"
                                   SelectionChanged="PreviewShapeChanged">
-                            <ComboBoxItem Content="Plane"
-                                          Tag="Plane"
-                                          IsSelected="True" />
                             <ComboBoxItem Content="Cube"
-                                          Tag="Cube" />
+                                          Tag="Cube"
+                                          IsSelected="True" />
+                            <ComboBoxItem Content="Plane"
+                                          Tag="Plane" />
+                            <ComboBoxItem Content="Sphere"
+                                          Tag="Sphere" />
+                            <ComboBoxItem Content="Cylinder"
+                                          Tag="Cylinder" />
                         </ComboBox>
                     </Grid>
                 </StackPanel>
