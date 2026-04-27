@@ -14,6 +14,8 @@ public static class NormalMapGenerator
         double blurSharp,
         bool invertX,
         bool invertY,
+        HeightChannelSource channelSource = HeightChannelSource.Luminance,
+        NormalMapEdgeMode edgeMode = NormalMapEdgeMode.Clamp,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -41,7 +43,7 @@ public static class NormalMapGenerator
             return null;
         }
 
-        double[] heights = BuildHeightMap(sourcePixels, width, height, stride, cancellationToken);
+        double[] heights = BuildHeightMap(sourcePixels, width, height, stride, channelSource, cancellationToken);
         if (cancellationToken.IsCancellationRequested)
         {
             return null;
@@ -53,7 +55,7 @@ public static class NormalMapGenerator
             return null;
         }
 
-        heights = ApplyBlurSharp(heights, width, height, blurSharp, cancellationToken);
+        heights = ApplyBlurSharp(heights, width, height, blurSharp, edgeMode, cancellationToken);
         if (cancellationToken.IsCancellationRequested)
         {
             return null;
@@ -69,13 +71,13 @@ public static class NormalMapGenerator
                 return null;
             }
 
-            int upY = Math.Max(0, y - 1);
-            int downY = Math.Min(height - 1, y + 1);
+            int upY = ResolveSampleCoordinate(y - 1, height, edgeMode);
+            int downY = ResolveSampleCoordinate(y + 1, height, edgeMode);
 
             for (int x = 0; x < width; x++)
             {
-                int leftX = Math.Max(0, x - 1);
-                int rightX = Math.Min(width - 1, x + 1);
+                int leftX = ResolveSampleCoordinate(x - 1, width, edgeMode);
+                int rightX = ResolveSampleCoordinate(x + 1, width, edgeMode);
 
                 double left = heights[y * width + leftX];
                 double right = heights[y * width + rightX];
@@ -147,6 +149,7 @@ public static class NormalMapGenerator
         int width,
         int height,
         int stride,
+        HeightChannelSource channelSource,
         CancellationToken cancellationToken)
     {
         double[] heights = new double[width * height];
@@ -164,8 +167,18 @@ public static class NormalMapGenerator
                 byte blue = pixels[pixelIndex];
                 byte green = pixels[pixelIndex + 1];
                 byte red = pixels[pixelIndex + 2];
+                byte alpha = pixels[pixelIndex + 3];
 
-                heights[y * width + x] = ((0.299 * red) + (0.587 * green) + (0.114 * blue)) / 255.0;
+                byte sourceValue = channelSource switch
+                {
+                    HeightChannelSource.Red => red,
+                    HeightChannelSource.Green => green,
+                    HeightChannelSource.Blue => blue,
+                    HeightChannelSource.Alpha => alpha,
+                    _ => (byte)Math.Clamp(Math.Round((0.299 * red) + (0.587 * green) + (0.114 * blue)), 0.0, 255.0)
+                };
+
+                heights[y * width + x] = sourceValue / 255.0;
             }
         }
 
@@ -204,6 +217,7 @@ public static class NormalMapGenerator
         int width,
         int height,
         double blurSharp,
+        NormalMapEdgeMode edgeMode,
         CancellationToken cancellationToken)
     {
         double amount = Math.Clamp(blurSharp, -10.0, 10.0);
@@ -214,7 +228,7 @@ public static class NormalMapGenerator
         }
 
         int radius = Math.Max(1, (int)Math.Ceiling(Math.Abs(amount)));
-        double[] blurred = BoxBlur(heights, width, height, radius, cancellationToken);
+        double[] blurred = BoxBlur(heights, width, height, radius, edgeMode, cancellationToken);
 
         if (amount > 0)
         {
@@ -246,6 +260,7 @@ public static class NormalMapGenerator
         int width,
         int height,
         int radius,
+        NormalMapEdgeMode edgeMode,
         CancellationToken cancellationToken)
     {
         double[] horizontal = new double[heights.Length];
@@ -265,7 +280,7 @@ public static class NormalMapGenerator
 
                 for (int offset = -radius; offset <= radius; offset++)
                 {
-                    int sampleX = Math.Clamp(x + offset, 0, width - 1);
+                    int sampleX = ResolveSampleCoordinate(x + offset, width, edgeMode);
                     sum += heights[y * width + sampleX];
                 }
 
@@ -286,7 +301,7 @@ public static class NormalMapGenerator
 
                 for (int offset = -radius; offset <= radius; offset++)
                 {
-                    int sampleY = Math.Clamp(y + offset, 0, height - 1);
+                    int sampleY = ResolveSampleCoordinate(y + offset, height, edgeMode);
                     sum += horizontal[sampleY * width + x];
                 }
 
@@ -326,4 +341,35 @@ public static class NormalMapGenerator
         double mapped = (value * 0.5) + 0.5;
         return (byte)Math.Clamp(Math.Round(mapped * 255.0), 0.0, 255.0);
     }
+
+    private static int ResolveSampleCoordinate(int coordinate, int length, NormalMapEdgeMode edgeMode)
+    {
+        if (length <= 1)
+        {
+            return 0;
+        }
+
+        if (edgeMode == NormalMapEdgeMode.Wrap)
+        {
+            int wrapped = coordinate % length;
+            return wrapped < 0 ? wrapped + length : wrapped;
+        }
+
+        return Math.Clamp(coordinate, 0, length - 1);
+    }
+}
+
+public enum HeightChannelSource
+{
+    Luminance,
+    Red,
+    Green,
+    Blue,
+    Alpha
+}
+
+public enum NormalMapEdgeMode
+{
+    Clamp,
+    Wrap
 }

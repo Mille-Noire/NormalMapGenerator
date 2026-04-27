@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private TextBox? _levelValueText;
     private Slider? _blurSharpSlider;
     private TextBox? _blurSharpValueText;
+    private ComboBox? _channelSourceComboBox;
+    private ComboBox? _edgeModeComboBox;
     private CheckBox? _invertXCheckBox;
     private CheckBox? _invertYCheckBox;
     private CheckBox? _useHeightmapAlbedoCheckBox;
@@ -286,6 +288,8 @@ public partial class MainWindow : Window
         if (_strengthSlider is null
             || _levelSlider is null
             || _blurSharpSlider is null
+            || _channelSourceComboBox is null
+            || _edgeModeComboBox is null
             || _invertXCheckBox is null
             || _invertYCheckBox is null
             || _normalPreviewImage is null
@@ -298,6 +302,8 @@ public partial class MainWindow : Window
         double strength = _strengthSlider.Value;
         double level = _levelSlider.Value;
         double blurSharp = _blurSharpSlider.Value;
+        HeightChannelSource channelSource = GetSelectedHeightChannelSource();
+        NormalMapEdgeMode edgeMode = GetSelectedEdgeMode();
         bool invertX = _invertXCheckBox.IsChecked == true;
         bool invertY = _invertYCheckBox.IsChecked == true;
         int version = Interlocked.Increment(ref _previewUpdateVersion);
@@ -310,6 +316,8 @@ public partial class MainWindow : Window
             strength,
             level,
             blurSharp,
+            channelSource,
+            edgeMode,
             invertX,
             invertY);
 
@@ -353,7 +361,9 @@ public partial class MainWindow : Window
                     request.Level,
                     request.BlurSharp,
                     request.InvertX,
-                    request.InvertY));
+                    request.InvertY,
+                    request.ChannelSource,
+                    request.EdgeMode));
 
             if (normalMap is null || !ReferenceEquals(_sourceImage, request.SourceImage))
             {
@@ -560,6 +570,35 @@ public partial class MainWindow : Window
             "Cylinder" => PreviewShape.Cylinder,
             _ => PreviewShape.Cube
         };
+    }
+
+    private HeightChannelSource GetSelectedHeightChannelSource()
+    {
+        if (_channelSourceComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return HeightChannelSource.Luminance;
+        }
+
+        return (item.Tag as string) switch
+        {
+            "Red" => HeightChannelSource.Red,
+            "Green" => HeightChannelSource.Green,
+            "Blue" => HeightChannelSource.Blue,
+            "Alpha" => HeightChannelSource.Alpha,
+            _ => HeightChannelSource.Luminance
+        };
+    }
+
+    private NormalMapEdgeMode GetSelectedEdgeMode()
+    {
+        if (_edgeModeComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return NormalMapEdgeMode.Clamp;
+        }
+
+        return string.Equals(item.Tag as string, "Wrap", StringComparison.OrdinalIgnoreCase)
+            ? NormalMapEdgeMode.Wrap
+            : NormalMapEdgeMode.Clamp;
     }
 
     private static MeshGeometry3D CreatePreviewGeometry(PreviewShape shape)
@@ -980,6 +1019,8 @@ public partial class MainWindow : Window
         double Strength,
         double Level,
         double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
         bool InvertX,
         bool InvertY);
 
@@ -1127,6 +1168,8 @@ public partial class MainWindow : Window
         _levelValueText = FindRequiredControl<TextBox>("LevelValueText");
         _blurSharpSlider = FindRequiredControl<Slider>("BlurSharpSlider");
         _blurSharpValueText = FindRequiredControl<TextBox>("BlurSharpValueText");
+        _channelSourceComboBox = FindRequiredControl<ComboBox>("ChannelSourceComboBox");
+        _edgeModeComboBox = FindRequiredControl<ComboBox>("EdgeModeComboBox");
         _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");
         _invertYCheckBox = FindRequiredControl<CheckBox>("InvertYCheckBox");
         _useHeightmapAlbedoCheckBox = FindRequiredControl<CheckBox>("UseHeightmapAlbedoCheckBox");

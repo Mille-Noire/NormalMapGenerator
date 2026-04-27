@@ -41,3 +41,49 @@ Acceptance criteria:
 - Meshes with valid UVs display the current normal map correctly.
 - Failed imports do not clear the currently loaded heightmap or normal map.
 - Export behavior remains unchanged and still exports only the normal map PNG.
+
+## Additional Normal Map Generation Controls
+
+Status: Todo
+
+Add more source-height shaping controls after the current channel source and
+edge-mode options have proven useful in practice.
+
+Ideas:
+- Add `Black Point` and `White Point` controls to remap a useful source height
+  range before normal generation.
+- Add a `Gamma / Curve` control for non-linear height shaping.
+- Add `Height Offset` to shift the interpreted height before level/curve
+  processing.
+- Add `Detail Normal Blend` for mixing in a secondary fine-detail normal map.
+- Add `Batch Export` once single-texture settings feel stable.
+
+Acceptance criteria:
+- New controls update the preview through the existing async normal-generation
+  flow.
+- Reset buttons return every new control to its documented default.
+- Controls that affect height interpretation also affect future displacement
+  workflows consistently.
+- Export always matches the currently visible generated normal map.
+
+## Theme Mode
+
+Status: Todo
+
+Add theme handling so the app can be used comfortably in light and dark desktop
+environments.
+
+Ideas:
+- Add a theme mode setting with `System`, `Light`, and `Dark`.
+- Use `System` as the default so Windows decides the app appearance.
+- Define shared brushes/resources instead of hard-coded colors in individual
+  controls.
+- Make the image and 3D preview backgrounds stay useful in both light and dark
+  mode.
+
+Acceptance criteria:
+- `System` follows the current Windows app theme where available.
+- `Light` and `Dark` override the system choice.
+- Theme changes update the visible UI without restarting the app.
+- Preview contrast, borders, labels, and tooltips remain readable in both
+  themes.

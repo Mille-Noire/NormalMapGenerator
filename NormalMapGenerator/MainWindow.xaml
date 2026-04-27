@@ -296,6 +296,75 @@
                                 ToolTip="Reset blur/sharp to 0.00." />
                     </Grid>
 
+                    <StackPanel Orientation="Horizontal"
+                                Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="Channel Source"
+                                       VerticalAlignment="Center" />
+                            <Border Style="{StaticResource InfoBadgeStyle}">
+                                <Border.ToolTip>
+                                    <TextBlock MaxWidth="280"
+                                               TextWrapping="Wrap"
+                                               Text="Selects which image channel is interpreted as height. Luminance uses RGB brightness; Red, Green, Blue, or Alpha use only that single channel." />
+                                </Border.ToolTip>
+                                <TextBlock Text="i"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="#475467"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                        <ComboBox x:Name="ChannelSourceComboBox"
+                                  MinWidth="116"
+                                  Margin="0,0,20,0"
+                                  SelectionChanged="SettingsChanged"
+                                  ToolTip="Select which source channel is interpreted as height.">
+                            <ComboBoxItem Content="Luminance"
+                                          Tag="Luminance"
+                                          IsSelected="True" />
+                            <ComboBoxItem Content="Red"
+                                          Tag="Red" />
+                            <ComboBoxItem Content="Green"
+                                          Tag="Green" />
+                            <ComboBoxItem Content="Blue"
+                                          Tag="Blue" />
+                            <ComboBoxItem Content="Alpha"
+                                          Tag="Alpha" />
+                        </ComboBox>
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="Edge Mode"
+                                       VerticalAlignment="Center" />
+                            <Border Style="{StaticResource InfoBadgeStyle}">
+                                <Border.ToolTip>
+                                    <TextBlock MaxWidth="280"
+                                               TextWrapping="Wrap"
+                                               Text="Controls how pixels beyond image edges are sampled. Clamp repeats the nearest edge pixel; Wrap samples from the opposite side for tileable textures." />
+                                </Border.ToolTip>
+                                <TextBlock Text="i"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="#475467"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                        <ComboBox x:Name="EdgeModeComboBox"
+                                  MinWidth="96"
+                                  SelectionChanged="SettingsChanged"
+                                  ToolTip="Clamp keeps edge pixels fixed. Wrap samples across image borders for tileable textures.">
+                            <ComboBoxItem Content="Clamp"
+                                          Tag="Clamp"
+                                          IsSelected="True" />
+                            <ComboBoxItem Content="Wrap"
+                                          Tag="Wrap" />
+                        </ComboBox>
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal">
                         <CheckBox x:Name="InvertXCheckBox"
                                   Content="Invert X"
