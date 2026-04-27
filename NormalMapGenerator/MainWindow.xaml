@@ -93,6 +93,58 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0"
+                                   Text="Level"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0" />
+                        <Button x:Name="DecreaseLevelButton"
+                                Grid.Column="1"
+                                Content="-"
+                                Width="18"
+                                Height="18"
+                                Padding="0"
+                                Margin="0,0,6,0"
+                                Click="DecreaseLevelButton_Click"
+                                ToolTip="Decrease level by 0.01. Hold Shift for 0.1." />
+                        <Slider x:Name="LevelSlider"
+                                Grid.Column="2"
+                                Minimum="0"
+                                Maximum="3"
+                                Value="1"
+                                TickFrequency="0.1"
+                                IsSnapToTickEnabled="False"
+                                VerticalAlignment="Center"
+                                ValueChanged="SettingsChanged" />
+                        <Button x:Name="IncreaseLevelButton"
+                                Grid.Column="3"
+                                Content="+"
+                                Width="18"
+                                Height="18"
+                                Padding="0"
+                                Margin="6,0,0,0"
+                                Click="IncreaseLevelButton_Click"
+                                ToolTip="Increase level by 0.01. Hold Shift for 0.1." />
+                        <TextBox x:Name="LevelValueText"
+                                 Grid.Column="4"
+                                 Text="1.00"
+                                 Width="58"
+                                 Margin="8,0,0,0"
+                                 Padding="4,2"
+                                 VerticalContentAlignment="Center"
+                                 LostFocus="LevelValueText_LostFocus"
+                                 KeyDown="LevelValueText_KeyDown"
+                                 ToolTip="Enter a level value from 0 to 3." />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="92" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
                                    Text="Blur / Sharp"
                                    VerticalAlignment="Center"
                                    Margin="0,0,8,0" />

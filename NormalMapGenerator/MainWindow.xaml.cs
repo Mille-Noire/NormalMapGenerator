@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     private Button? _exportNormalMapButton;
     private Slider? _strengthSlider;
     private TextBox? _strengthValueText;
+    private Slider? _levelSlider;
+    private TextBox? _levelValueText;
     private Slider? _blurSharpSlider;
     private TextBox? _blurSharpValueText;
     private CheckBox? _invertXCheckBox;
@@ -35,6 +37,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         BindNamedControls();
         UpdateStrengthText();
+        UpdateLevelText();
         UpdateBlurSharpText();
     }
 
@@ -115,6 +118,7 @@ public partial class MainWindow : Window
     private void SettingsChanged(object sender, RoutedEventArgs e)
     {
         UpdateStrengthText();
+        UpdateLevelText();
         UpdateBlurSharpText();
         ScheduleNormalMapRegeneration();
     }
@@ -132,6 +136,22 @@ public partial class MainWindow : Window
         if (_strengthSlider is not null)
         {
             AdjustSlider(_strengthSlider, GetSliderStep());
+        }
+    }
+
+    private void DecreaseLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_levelSlider is not null)
+        {
+            AdjustSlider(_levelSlider, -GetSliderStep());
+        }
+    }
+
+    private void IncreaseLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_levelSlider is not null)
+        {
+            AdjustSlider(_levelSlider, GetSliderStep());
         }
     }
 
@@ -161,6 +181,20 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter)
         {
             CommitStrengthText();
+            e.Handled = true;
+        }
+    }
+
+    private void LevelValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitLevelText();
+    }
+
+    private void LevelValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitLevelText();
             e.Handled = true;
         }
     }
@@ -199,6 +233,7 @@ public partial class MainWindow : Window
         }
 
         if (_strengthSlider is null
+            || _levelSlider is null
             || _blurSharpSlider is null
             || _invertXCheckBox is null
             || _invertYCheckBox is null
@@ -210,6 +245,7 @@ public partial class MainWindow : Window
 
         BitmapSource sourceImage = _sourceImage;
         double strength = _strengthSlider.Value;
+        double level = _levelSlider.Value;
         double blurSharp = _blurSharpSlider.Value;
         bool invertX = _invertXCheckBox.IsChecked == true;
         bool invertY = _invertYCheckBox.IsChecked == true;
@@ -221,6 +257,7 @@ public partial class MainWindow : Window
             version,
             sourceImage,
             strength,
+            level,
             blurSharp,
             invertX,
             invertY);
@@ -262,6 +299,7 @@ public partial class MainWindow : Window
                 () => ImageProcessing.NormalMapGenerator.Generate(
                     request.SourceImage,
                     request.Strength,
+                    request.Level,
                     request.BlurSharp,
                     request.InvertX,
                     request.InvertY));
@@ -307,6 +345,7 @@ public partial class MainWindow : Window
         int Version,
         BitmapSource SourceImage,
         double Strength,
+        double Level,
         double BlurSharp,
         bool InvertX,
         bool InvertY);
@@ -324,6 +363,21 @@ public partial class MainWindow : Window
         }
 
         SetStrengthText(_strengthSlider.Value);
+    }
+
+    private void UpdateLevelText()
+    {
+        if (_levelValueText is null || _levelSlider is null)
+        {
+            return;
+        }
+
+        if (_levelValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetLevelText(_levelSlider.Value);
     }
 
     private void UpdateBlurSharpText()
@@ -369,6 +423,21 @@ public partial class MainWindow : Window
         SetStrengthText(_strengthSlider.Value);
     }
 
+    private void CommitLevelText()
+    {
+        if (_levelValueText is null || _levelSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(_levelValueText.Text, out double level))
+        {
+            _levelSlider.Value = Math.Clamp(level, _levelSlider.Minimum, _levelSlider.Maximum);
+        }
+
+        SetLevelText(_levelSlider.Value);
+    }
+
     private void CommitBlurSharpText()
     {
         if (_blurSharpValueText is null || _blurSharpSlider is null)
@@ -394,6 +463,16 @@ public partial class MainWindow : Window
         _strengthValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
+    private void SetLevelText(double value)
+    {
+        if (_levelValueText is null)
+        {
+            return;
+        }
+
+        _levelValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
     private void SetBlurSharpText(double value)
     {
         if (_blurSharpValueText is null)
@@ -411,6 +490,8 @@ public partial class MainWindow : Window
         _exportNormalMapButton = FindRequiredControl<Button>("ExportNormalMapButton");
         _strengthSlider = FindRequiredControl<Slider>("StrengthSlider");
         _strengthValueText = FindRequiredControl<TextBox>("StrengthValueText");
+        _levelSlider = FindRequiredControl<Slider>("LevelSlider");
+        _levelValueText = FindRequiredControl<TextBox>("LevelValueText");
         _blurSharpSlider = FindRequiredControl<Slider>("BlurSharpSlider");
         _blurSharpValueText = FindRequiredControl<TextBox>("BlurSharpValueText");
         _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");

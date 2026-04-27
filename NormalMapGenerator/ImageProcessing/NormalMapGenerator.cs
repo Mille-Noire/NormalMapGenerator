@@ -10,6 +10,7 @@ public static class NormalMapGenerator
     public static BitmapSource? Generate(
         BitmapSource source,
         double strength,
+        double level,
         double blurSharp,
         bool invertX,
         bool invertY,
@@ -41,6 +42,12 @@ public static class NormalMapGenerator
         }
 
         double[] heights = BuildHeightMap(sourcePixels, width, height, stride, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        heights = ApplyLevel(heights, level, cancellationToken);
         if (cancellationToken.IsCancellationRequested)
         {
             return null;
@@ -165,6 +172,33 @@ public static class NormalMapGenerator
         return heights;
     }
 
+    private static double[] ApplyLevel(double[] heights, double level, CancellationToken cancellationToken)
+    {
+        double safeLevel = Math.Clamp(level, 0.0, 3.0);
+
+        if (Math.Abs(safeLevel - 1.0) < 0.001)
+        {
+            return heights;
+        }
+
+        double[] adjusted = new double[heights.Length];
+
+        for (int i = 0; i < heights.Length; i++)
+        {
+            if (i % 4096 == 0)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return adjusted;
+                }
+            }
+
+            adjusted[i] = ((heights[i] - 0.5) * safeLevel) + 0.5;
+        }
+
+        return adjusted;
+    }
+
     private static double[] ApplyBlurSharp(
         double[] heights,
         int width,
@@ -201,7 +235,7 @@ public static class NormalMapGenerator
                 }
             }
 
-            sharpened[i] = ClampHeight(heights[i] + ((heights[i] - blurred[i]) * sharpenStrength));
+            sharpened[i] = heights[i] + ((heights[i] - blurred[i]) * sharpenStrength);
         }
 
         return sharpened;
@@ -285,11 +319,6 @@ public static class NormalMapGenerator
         }
 
         return blended;
-    }
-
-    private static double ClampHeight(double value)
-    {
-        return Math.Clamp(value, 0.0, 1.0);
     }
 
     private static byte ToColorChannel(double value)
