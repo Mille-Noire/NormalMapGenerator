@@ -2,6 +2,8 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using NormalMapGenerator.ImageProcessing;
@@ -13,6 +15,7 @@ public partial class MainWindow : Window
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
     private string? _sourceFilePath;
+    private bool _isUpdatingStrengthText;
 
     public MainWindow()
     {
@@ -96,6 +99,43 @@ public partial class MainWindow : Window
         RegenerateNormalMap();
     }
 
+    private void DecreaseStrengthButton_Click(object sender, RoutedEventArgs e)
+    {
+        AdjustStrength(-GetStrengthStep());
+    }
+
+    private void IncreaseStrengthButton_Click(object sender, RoutedEventArgs e)
+    {
+        AdjustStrength(GetStrengthStep());
+    }
+
+    private void StrengthValueText_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingStrengthText || StrengthSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseStrength(StrengthValueText.Text, out double strength))
+        {
+            StrengthSlider.Value = Math.Clamp(strength, StrengthSlider.Minimum, StrengthSlider.Maximum);
+        }
+    }
+
+    private void StrengthValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitStrengthText();
+    }
+
+    private void StrengthValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitStrengthText();
+            e.Handled = true;
+        }
+    }
+
     private void RegenerateNormalMap()
     {
         if (_sourceImage is null)
@@ -135,7 +175,63 @@ public partial class MainWindow : Window
             return;
         }
 
-        StrengthValueText.Text = StrengthSlider.Value.ToString("0.0", CultureInfo.InvariantCulture);
+        if (StrengthValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetStrengthText(StrengthSlider.Value);
+    }
+
+    private void AdjustStrength(double delta)
+    {
+        StrengthSlider.Value = Math.Clamp(
+            Math.Round((StrengthSlider.Value + delta) * 100.0) / 100.0,
+            StrengthSlider.Minimum,
+            StrengthSlider.Maximum);
+    }
+
+    private static double GetStrengthStep()
+    {
+        return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 0.1 : 0.01;
+    }
+
+    private void CommitStrengthText()
+    {
+        if (StrengthValueText is null || StrengthSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseStrength(StrengthValueText.Text, out double strength))
+        {
+            StrengthSlider.Value = Math.Clamp(strength, StrengthSlider.Minimum, StrengthSlider.Maximum);
+        }
+
+        SetStrengthText(StrengthSlider.Value);
+    }
+
+    private void SetStrengthText(double value)
+    {
+        _isUpdatingStrengthText = true;
+        StrengthValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+        _isUpdatingStrengthText = false;
+    }
+
+    private static bool TryParseStrength(string text, out double value)
+    {
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
+        {
+            return true;
+        }
+
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        string normalized = text.Replace(',', '.');
+        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private string BuildDefaultExportFileName()
