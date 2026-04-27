@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="NormalMapGenerator"
-        Height="720"
+        Height="840"
         Width="1440"
         MinHeight="560"
         MinWidth="1180">
@@ -39,6 +39,7 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
+                Height="230"
                 Padding="12"
                 BorderBrush="#D0D5DD"
                 BorderThickness="1"

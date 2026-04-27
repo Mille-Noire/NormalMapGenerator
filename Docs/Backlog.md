@@ -42,6 +42,30 @@ Acceptance criteria:
 - Failed imports do not clear the currently loaded heightmap or normal map.
 - Export behavior remains unchanged and still exports only the normal map PNG.
 
+## Maximizable Preview Panels
+
+Status: Todo
+
+Allow users to temporarily maximize individual preview areas so details can be
+inspected without changing the global window layout.
+
+Ideas:
+- Add a small maximize button to `Source Heightmap`, `Generated Map`, and
+  `3D Preview`.
+- Show the selected preview in a larger modal, overlay, or dedicated expanded
+  layout state.
+- Keep the current image stretch behavior so source and generated maps remain
+  undistorted.
+- Preserve 3D preview controls and camera state when entering or leaving the
+  maximized view.
+
+Acceptance criteria:
+- Each preview area can be maximized and restored independently.
+- Maximizing one preview does not regenerate normal or displacement maps.
+- Export behavior remains unchanged.
+- Keyboard escape or a visible close/restore button returns to the normal
+  three-column preview layout.
+
 ## Additional Normal Map Generation Controls
 
 Status: Todo

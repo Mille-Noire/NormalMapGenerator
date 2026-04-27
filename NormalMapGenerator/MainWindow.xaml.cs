@@ -36,7 +36,9 @@ public partial class MainWindow : Window
     private const int PreviewCylinderHeightSegments = 32;
     private const int PreviewCylinderCapRings = 16;
     private const float PreviewHardEdgeFadeWidth = 0.08f;
+    private const int MaxPreviewBitmapDimension = 1024;
 
+    private BitmapSource? _sourceFullResolutionImage;
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
     private BitmapSource? _displacementMap;
@@ -130,13 +132,15 @@ public partial class MainWindow : Window
         try
         {
             BitmapImage image = LoadBitmap(dialog.FileName);
-            _sourceImage = image;
+            BitmapSource previewImage = CreatePreviewBitmap(image);
+            _sourceFullResolutionImage = image;
+            _sourceImage = previewImage;
             _sourceFilePath = dialog.FileName;
             _normalMap = null;
             _displacementMap = null;
             if (_sourcePreviewImage is not null)
             {
-                _sourcePreviewImage.Source = image;
+                _sourcePreviewImage.Source = previewImage;
             }
 
             RefreshPreviewGeometry();
@@ -151,10 +155,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExportMapButton_Click(object sender, RoutedEventArgs e)
+    private async void ExportMapButton_Click(object sender, RoutedEventArgs e)
     {
-        BitmapSource? map = GetActiveGeneratedMap();
-        if (map is null)
+        if (_sourceFullResolutionImage is null || GetActiveGeneratedMap() is null)
         {
             return;
         }
@@ -175,15 +178,49 @@ public partial class MainWindow : Window
 
         try
         {
+            if (_exportMapButton is not null)
+            {
+                _exportMapButton.IsEnabled = false;
+            }
+
+            BitmapSource sourceImage = _sourceFullResolutionImage;
+            bool exportDisplacement = IsDisplacementTabActive();
+            NormalMapGenerationSettings? normalSettings = exportDisplacement ? null : CaptureNormalMapGenerationSettings();
+            DisplacementMapGenerationSettings? displacementSettings = exportDisplacement ? CaptureDisplacementMapGenerationSettings() : null;
+
+            BitmapSource? map = await Task.Run(() =>
+            {
+                if (exportDisplacement)
+                {
+                    return displacementSettings.HasValue
+                        ? GenerateDisplacementMap(sourceImage, displacementSettings.Value)
+                        : null;
+                }
+
+                return normalSettings.HasValue
+                    ? GenerateNormalMap(sourceImage, normalSettings.Value)
+                    : null;
+            });
+
+            if (map is null)
+            {
+                ShowError("The generated map could not be exported because the current settings are incomplete.");
+                return;
+            }
+
             PngBitmapEncoder encoder = new();
             encoder.Frames.Add(BitmapFrame.Create(map));
 
             using FileStream stream = new(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None);
             encoder.Save(stream);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or ArgumentException)
         {
             ShowError($"The generated map could not be exported.\n\n{exception.Message}");
+        }
+        finally
+        {
+            UpdateActiveMapPreview();
         }
     }
 
@@ -552,6 +589,72 @@ public partial class MainWindow : Window
             _isDisplacementPreviewWorkerRunning = true;
             _ = RunDisplacementPreviewWorkerAsync();
         }
+    }
+
+    private NormalMapGenerationSettings? CaptureNormalMapGenerationSettings()
+    {
+        if (_strengthSlider is null
+            || _levelSlider is null
+            || _blurSharpSlider is null
+            || _invertXCheckBox is null
+            || _invertYCheckBox is null)
+        {
+            return null;
+        }
+
+        return new NormalMapGenerationSettings(
+            _strengthSlider.Value,
+            _levelSlider.Value,
+            _blurSharpSlider.Value,
+            GetSelectedHeightChannelSource(),
+            GetSelectedEdgeMode(),
+            _invertXCheckBox.IsChecked == true,
+            _invertYCheckBox.IsChecked == true);
+    }
+
+    private DisplacementMapGenerationSettings? CaptureDisplacementMapGenerationSettings()
+    {
+        if (_displacementLevelSlider is null
+            || _displacementBlurSharpSlider is null
+            || _invertDisplacementCheckBox is null)
+        {
+            return null;
+        }
+
+        return new DisplacementMapGenerationSettings(
+            _displacementLevelSlider.Value,
+            _displacementBlurSharpSlider.Value,
+            GetSelectedDisplacementHeightChannelSource(),
+            GetSelectedDisplacementEdgeMode(),
+            _invertDisplacementCheckBox.IsChecked == true);
+    }
+
+    private static BitmapSource? GenerateNormalMap(
+        BitmapSource sourceImage,
+        NormalMapGenerationSettings settings)
+    {
+        return ImageProcessing.NormalMapGenerator.Generate(
+            sourceImage,
+            settings.Strength,
+            settings.Level,
+            settings.BlurSharp,
+            settings.InvertX,
+            settings.InvertY,
+            settings.ChannelSource,
+            settings.EdgeMode);
+    }
+
+    private static BitmapSource? GenerateDisplacementMap(
+        BitmapSource sourceImage,
+        DisplacementMapGenerationSettings settings)
+    {
+        return ImageProcessing.NormalMapGenerator.GenerateDisplacement(
+            sourceImage,
+            settings.Level,
+            settings.BlurSharp,
+            settings.Invert,
+            settings.ChannelSource,
+            settings.EdgeMode);
     }
 
     private async Task RunNormalPreviewWorkerAsync()
@@ -1640,6 +1743,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private readonly record struct NormalMapGenerationSettings(
+        double Strength,
+        double Level,
+        double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
+        bool InvertX,
+        bool InvertY);
+
+    private readonly record struct DisplacementMapGenerationSettings(
+        double Level,
+        double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
+        bool Invert);
+
     private static TextureModel CreateTextureModel(BitmapSource bitmap)
     {
         MemoryStream stream = new();
@@ -2012,6 +2131,20 @@ public partial class MainWindow : Window
         image.EndInit();
         image.Freeze();
         return image;
+    }
+
+    private static BitmapSource CreatePreviewBitmap(BitmapSource source)
+    {
+        int largestDimension = Math.Max(source.PixelWidth, source.PixelHeight);
+        if (largestDimension <= MaxPreviewBitmapDimension)
+        {
+            return source;
+        }
+
+        double scale = MaxPreviewBitmapDimension / (double)largestDimension;
+        TransformedBitmap preview = new(source, new ScaleTransform(scale, scale));
+        preview.Freeze();
+        return preview;
     }
 
     private static bool IsSupportedImageFile(string filePath)
