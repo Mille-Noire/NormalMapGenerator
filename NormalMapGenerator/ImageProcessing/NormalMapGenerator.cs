@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -6,9 +7,20 @@ namespace NormalMapGenerator.ImageProcessing;
 
 public static class NormalMapGenerator
 {
-    public static BitmapSource Generate(BitmapSource source, double strength, bool invertX, bool invertY)
+    public static BitmapSource? Generate(
+        BitmapSource source,
+        double strength,
+        double blurSharp,
+        bool invertX,
+        bool invertY,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
 
         BitmapSource input = EnsureBgra32(source);
         int width = input.PixelWidth;
@@ -23,12 +35,33 @@ public static class NormalMapGenerator
         byte[] sourcePixels = new byte[stride * height];
         input.CopyPixels(sourcePixels, stride, 0);
 
-        double[] heights = BuildHeightMap(sourcePixels, width, height, stride);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        double[] heights = BuildHeightMap(sourcePixels, width, height, stride, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        heights = ApplyBlurSharp(heights, width, height, blurSharp, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
         byte[] normalPixels = new byte[stride * height];
         double safeStrength = Math.Max(0.0, strength);
 
         for (int y = 0; y < height; y++)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             int upY = Math.Max(0, y - 1);
             int downY = Math.Min(height - 1, y + 1);
 
@@ -102,12 +135,22 @@ public static class NormalMapGenerator
         return converted;
     }
 
-    private static double[] BuildHeightMap(byte[] pixels, int width, int height, int stride)
+    private static double[] BuildHeightMap(
+        byte[] pixels,
+        int width,
+        int height,
+        int stride,
+        CancellationToken cancellationToken)
     {
         double[] heights = new double[width * height];
 
         for (int y = 0; y < height; y++)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return heights;
+            }
+
             for (int x = 0; x < width; x++)
             {
                 int pixelIndex = y * stride + x * 4;
@@ -120,6 +163,133 @@ public static class NormalMapGenerator
         }
 
         return heights;
+    }
+
+    private static double[] ApplyBlurSharp(
+        double[] heights,
+        int width,
+        int height,
+        double blurSharp,
+        CancellationToken cancellationToken)
+    {
+        double amount = Math.Clamp(blurSharp, -10.0, 10.0);
+
+        if (Math.Abs(amount) < 0.001)
+        {
+            return heights;
+        }
+
+        int radius = Math.Max(1, (int)Math.Ceiling(Math.Abs(amount)));
+        double[] blurred = BoxBlur(heights, width, height, radius, cancellationToken);
+
+        if (amount > 0)
+        {
+            double blurBlend = amount / 10.0;
+            return BlendHeightMaps(heights, blurred, blurBlend, cancellationToken);
+        }
+
+        double sharpenStrength = (-amount / 10.0) * 2.0;
+        double[] sharpened = new double[heights.Length];
+
+        for (int i = 0; i < heights.Length; i++)
+        {
+            if (i % 4096 == 0)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return sharpened;
+                }
+            }
+
+            sharpened[i] = ClampHeight(heights[i] + ((heights[i] - blurred[i]) * sharpenStrength));
+        }
+
+        return sharpened;
+    }
+
+    private static double[] BoxBlur(
+        double[] heights,
+        int width,
+        int height,
+        int radius,
+        CancellationToken cancellationToken)
+    {
+        double[] horizontal = new double[heights.Length];
+        double[] blurred = new double[heights.Length];
+        int diameter = (radius * 2) + 1;
+
+        for (int y = 0; y < height; y++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return blurred;
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                double sum = 0.0;
+
+                for (int offset = -radius; offset <= radius; offset++)
+                {
+                    int sampleX = Math.Clamp(x + offset, 0, width - 1);
+                    sum += heights[y * width + sampleX];
+                }
+
+                horizontal[y * width + x] = sum / diameter;
+            }
+        }
+
+        for (int y = 0; y < height; y++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return blurred;
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                double sum = 0.0;
+
+                for (int offset = -radius; offset <= radius; offset++)
+                {
+                    int sampleY = Math.Clamp(y + offset, 0, height - 1);
+                    sum += horizontal[sampleY * width + x];
+                }
+
+                blurred[y * width + x] = sum / diameter;
+            }
+        }
+
+        return blurred;
+    }
+
+    private static double[] BlendHeightMaps(
+        double[] original,
+        double[] target,
+        double amount,
+        CancellationToken cancellationToken)
+    {
+        double[] blended = new double[original.Length];
+
+        for (int i = 0; i < original.Length; i++)
+        {
+            if (i % 4096 == 0)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return blended;
+                }
+            }
+
+            blended[i] = original[i] + ((target[i] - original[i]) * amount);
+        }
+
+        return blended;
+    }
+
+    private static double ClampHeight(double value)
+    {
+        return Math.Clamp(value, 0.0, 1.0);
     }
 
     private static byte ToColorChannel(double value)

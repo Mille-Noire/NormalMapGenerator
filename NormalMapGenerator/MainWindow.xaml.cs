@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,12 +17,25 @@ public partial class MainWindow : Window
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
     private string? _sourceFilePath;
-    private bool _isUpdatingStrengthText;
+    private Image? _sourcePreviewImage;
+    private Image? _normalPreviewImage;
+    private Button? _exportNormalMapButton;
+    private Slider? _strengthSlider;
+    private TextBox? _strengthValueText;
+    private Slider? _blurSharpSlider;
+    private TextBox? _blurSharpValueText;
+    private CheckBox? _invertXCheckBox;
+    private CheckBox? _invertYCheckBox;
+    private PreviewRenderRequest? _pendingPreviewRequest;
+    private bool _isPreviewWorkerRunning;
+    private int _previewUpdateVersion;
 
     public MainWindow()
     {
         InitializeComponent();
+        BindNamedControls();
         UpdateStrengthText();
+        UpdateBlurSharpText();
     }
 
     private void LoadHeightmapButton_Click(object sender, RoutedEventArgs e)
@@ -49,8 +64,12 @@ public partial class MainWindow : Window
             BitmapImage image = LoadBitmap(dialog.FileName);
             _sourceImage = image;
             _sourceFilePath = dialog.FileName;
-            SourcePreviewImage.Source = image;
-            RegenerateNormalMap();
+            if (_sourcePreviewImage is not null)
+            {
+                _sourcePreviewImage.Source = image;
+            }
+
+            ScheduleNormalMapRegeneration();
         }
         catch (Exception exception) when (IsImageLoadException(exception))
         {
@@ -96,29 +115,39 @@ public partial class MainWindow : Window
     private void SettingsChanged(object sender, RoutedEventArgs e)
     {
         UpdateStrengthText();
-        RegenerateNormalMap();
+        UpdateBlurSharpText();
+        ScheduleNormalMapRegeneration();
     }
 
     private void DecreaseStrengthButton_Click(object sender, RoutedEventArgs e)
     {
-        AdjustStrength(-GetStrengthStep());
+        if (_strengthSlider is not null)
+        {
+            AdjustSlider(_strengthSlider, -GetSliderStep());
+        }
     }
 
     private void IncreaseStrengthButton_Click(object sender, RoutedEventArgs e)
     {
-        AdjustStrength(GetStrengthStep());
+        if (_strengthSlider is not null)
+        {
+            AdjustSlider(_strengthSlider, GetSliderStep());
+        }
     }
 
-    private void StrengthValueText_TextChanged(object sender, TextChangedEventArgs e)
+    private void DecreaseBlurSharpButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isUpdatingStrengthText || StrengthSlider is null)
+        if (_blurSharpSlider is not null)
         {
-            return;
+            AdjustSlider(_blurSharpSlider, -GetSliderStep());
         }
+    }
 
-        if (TryParseStrength(StrengthValueText.Text, out double strength))
+    private void IncreaseBlurSharpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_blurSharpSlider is not null)
         {
-            StrengthSlider.Value = Math.Clamp(strength, StrengthSlider.Minimum, StrengthSlider.Maximum);
+            AdjustSlider(_blurSharpSlider, GetSliderStep());
         }
     }
 
@@ -136,102 +165,285 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RegenerateNormalMap()
+    private void BlurSharpValueText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitBlurSharpText();
+    }
+
+    private void BlurSharpValueText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitBlurSharpText();
+            e.Handled = true;
+        }
+    }
+
+    private void ScheduleNormalMapRegeneration()
     {
         if (_sourceImage is null)
         {
-            if (ExportNormalMapButton is not null)
+            _normalMap = null;
+
+            if (_normalPreviewImage is not null)
             {
-                ExportNormalMapButton.IsEnabled = false;
+                _normalPreviewImage.Source = null;
+            }
+
+            if (_exportNormalMapButton is not null)
+            {
+                _exportNormalMapButton.IsEnabled = false;
             }
 
             return;
         }
 
+        if (_strengthSlider is null
+            || _blurSharpSlider is null
+            || _invertXCheckBox is null
+            || _invertYCheckBox is null
+            || _normalPreviewImage is null
+            || _exportNormalMapButton is null)
+        {
+            return;
+        }
+
+        BitmapSource sourceImage = _sourceImage;
+        double strength = _strengthSlider.Value;
+        double blurSharp = _blurSharpSlider.Value;
+        bool invertX = _invertXCheckBox.IsChecked == true;
+        bool invertY = _invertYCheckBox.IsChecked == true;
+        int version = Interlocked.Increment(ref _previewUpdateVersion);
+
+        _exportNormalMapButton.IsEnabled = false;
+
+        _pendingPreviewRequest = new PreviewRenderRequest(
+            version,
+            sourceImage,
+            strength,
+            blurSharp,
+            invertX,
+            invertY);
+
+        if (!_isPreviewWorkerRunning)
+        {
+            _isPreviewWorkerRunning = true;
+            _ = RunPreviewWorkerAsync();
+        }
+    }
+
+    private async Task RunPreviewWorkerAsync()
+    {
+        while (true)
+        {
+            PreviewRenderRequest? request = _pendingPreviewRequest;
+            if (request is null)
+            {
+                _isPreviewWorkerRunning = false;
+                return;
+            }
+
+            _pendingPreviewRequest = null;
+
+            await RenderPreviewAsync(request.Value);
+
+            if (_pendingPreviewRequest is not null)
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task RenderPreviewAsync(PreviewRenderRequest request)
+    {
         try
         {
-            _normalMap = ImageProcessing.NormalMapGenerator.Generate(
-                _sourceImage,
-                StrengthSlider.Value,
-                InvertXCheckBox.IsChecked == true,
-                InvertYCheckBox.IsChecked == true);
+            BitmapSource? normalMap = await Task.Run(
+                () => ImageProcessing.NormalMapGenerator.Generate(
+                    request.SourceImage,
+                    request.Strength,
+                    request.BlurSharp,
+                    request.InvertX,
+                    request.InvertY));
 
-            NormalPreviewImage.Source = _normalMap;
-            ExportNormalMapButton.IsEnabled = true;
+            if (normalMap is null || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
+            if (_normalPreviewImage is null || _exportNormalMapButton is null)
+            {
+                return;
+            }
+
+            _normalMap = normalMap;
+            _normalPreviewImage.Source = normalMap;
+            _exportNormalMapButton.IsEnabled = true;
         }
         catch (Exception exception)
         {
+            if (request.Version != _previewUpdateVersion || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
             _normalMap = null;
-            NormalPreviewImage.Source = null;
-            ExportNormalMapButton.IsEnabled = false;
+
+            if (_normalPreviewImage is not null)
+            {
+                _normalPreviewImage.Source = null;
+            }
+
+            if (_exportNormalMapButton is not null)
+            {
+                _exportNormalMapButton.IsEnabled = false;
+            }
+
             ShowError($"The normal map could not be generated.\n\n{exception.Message}");
         }
     }
 
+    private readonly record struct PreviewRenderRequest(
+        int Version,
+        BitmapSource SourceImage,
+        double Strength,
+        double BlurSharp,
+        bool InvertX,
+        bool InvertY);
+
     private void UpdateStrengthText()
     {
-        if (StrengthValueText is null || StrengthSlider is null)
+        if (_strengthValueText is null || _strengthSlider is null)
         {
             return;
         }
 
-        if (StrengthValueText.IsKeyboardFocusWithin)
+        if (_strengthValueText.IsKeyboardFocusWithin)
         {
             return;
         }
 
-        SetStrengthText(StrengthSlider.Value);
+        SetStrengthText(_strengthSlider.Value);
     }
 
-    private void AdjustStrength(double delta)
+    private void UpdateBlurSharpText()
     {
-        StrengthSlider.Value = Math.Clamp(
-            Math.Round((StrengthSlider.Value + delta) * 100.0) / 100.0,
-            StrengthSlider.Minimum,
-            StrengthSlider.Maximum);
+        if (_blurSharpValueText is null || _blurSharpSlider is null)
+        {
+            return;
+        }
+
+        if (_blurSharpValueText.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetBlurSharpText(_blurSharpSlider.Value);
     }
 
-    private static double GetStrengthStep()
+    private static void AdjustSlider(Slider slider, double delta)
+    {
+        slider.Value = Math.Clamp(
+            Math.Round((slider.Value + delta) * 100.0) / 100.0,
+            slider.Minimum,
+            slider.Maximum);
+    }
+
+    private static double GetSliderStep()
     {
         return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 0.1 : 0.01;
     }
 
     private void CommitStrengthText()
     {
-        if (StrengthValueText is null || StrengthSlider is null)
+        if (_strengthValueText is null || _strengthSlider is null)
         {
             return;
         }
 
-        if (TryParseStrength(StrengthValueText.Text, out double strength))
+        if (TryParseSliderValue(_strengthValueText.Text, out double strength))
         {
-            StrengthSlider.Value = Math.Clamp(strength, StrengthSlider.Minimum, StrengthSlider.Maximum);
+            _strengthSlider.Value = Math.Clamp(strength, _strengthSlider.Minimum, _strengthSlider.Maximum);
         }
 
-        SetStrengthText(StrengthSlider.Value);
+        SetStrengthText(_strengthSlider.Value);
+    }
+
+    private void CommitBlurSharpText()
+    {
+        if (_blurSharpValueText is null || _blurSharpSlider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(_blurSharpValueText.Text, out double blurSharp))
+        {
+            _blurSharpSlider.Value = Math.Clamp(blurSharp, _blurSharpSlider.Minimum, _blurSharpSlider.Maximum);
+        }
+
+        SetBlurSharpText(_blurSharpSlider.Value);
     }
 
     private void SetStrengthText(double value)
     {
-        _isUpdatingStrengthText = true;
-        StrengthValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
-        _isUpdatingStrengthText = false;
+        if (_strengthValueText is null)
+        {
+            return;
+        }
+
+        _strengthValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
-    private static bool TryParseStrength(string text, out double value)
+    private void SetBlurSharpText(double value)
     {
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
+        if (_blurSharpValueText is null)
+        {
+            return;
+        }
+
+        _blurSharpValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
+    private void BindNamedControls()
+    {
+        _sourcePreviewImage = FindRequiredControl<Image>("SourcePreviewImage");
+        _normalPreviewImage = FindRequiredControl<Image>("NormalPreviewImage");
+        _exportNormalMapButton = FindRequiredControl<Button>("ExportNormalMapButton");
+        _strengthSlider = FindRequiredControl<Slider>("StrengthSlider");
+        _strengthValueText = FindRequiredControl<TextBox>("StrengthValueText");
+        _blurSharpSlider = FindRequiredControl<Slider>("BlurSharpSlider");
+        _blurSharpValueText = FindRequiredControl<TextBox>("BlurSharpValueText");
+        _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");
+        _invertYCheckBox = FindRequiredControl<CheckBox>("InvertYCheckBox");
+    }
+
+    private T FindRequiredControl<T>(string name)
+        where T : class
+    {
+        return FindName(name) as T
+            ?? throw new InvalidOperationException($"The control '{name}' could not be found.");
+    }
+
+    private static bool TryParseSliderValue(string text, out double value)
+    {
+        const NumberStyles decimalStyle =
+            NumberStyles.AllowLeadingWhite
+            | NumberStyles.AllowTrailingWhite
+            | NumberStyles.AllowLeadingSign
+            | NumberStyles.AllowDecimalPoint;
+
+        if (double.TryParse(text, decimalStyle, CultureInfo.CurrentCulture, out value))
         {
             return true;
         }
 
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        if (double.TryParse(text, decimalStyle, CultureInfo.InvariantCulture, out value))
         {
             return true;
         }
 
         string normalized = text.Replace(',', '.');
-        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        return double.TryParse(normalized, decimalStyle, CultureInfo.InvariantCulture, out value);
     }
 
     private string BuildDefaultExportFileName()
