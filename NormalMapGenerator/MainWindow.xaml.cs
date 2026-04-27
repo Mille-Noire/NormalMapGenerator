@@ -452,12 +452,27 @@ public partial class MainWindow : Window
 
             _previewViewport3D.Items.Add(new AmbientLight3D
             {
-                Color = System.Windows.Media.Color.FromRgb(72, 72, 72)
+                Color = System.Windows.Media.Color.FromRgb(132, 138, 146)
             });
             _previewViewport3D.Items.Add(new DirectionalLight3D
             {
-                Color = Colors.White,
+                Color = System.Windows.Media.Color.FromRgb(255, 238, 210),
                 Direction = new Media3D.Vector3D(-0.35, -0.55, -1.0)
+            });
+            _previewViewport3D.Items.Add(new DirectionalLight3D
+            {
+                Color = System.Windows.Media.Color.FromRgb(150, 172, 210),
+                Direction = new Media3D.Vector3D(0.85, -0.2, -0.45)
+            });
+            _previewViewport3D.Items.Add(new DirectionalLight3D
+            {
+                Color = System.Windows.Media.Color.FromRgb(120, 142, 190),
+                Direction = new Media3D.Vector3D(0.45, -0.15, 0.9)
+            });
+            _previewViewport3D.Items.Add(new DirectionalLight3D
+            {
+                Color = System.Windows.Media.Color.FromRgb(105, 115, 135),
+                Direction = new Media3D.Vector3D(0.1, 0.85, -0.15)
             });
             _previewViewport3D.Items.Add(_previewModel);
             _preview3DHost.Content = _previewViewport3D;
