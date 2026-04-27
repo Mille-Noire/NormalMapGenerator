@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         Title="NormalMapGenerator"
         Height="840"
-        Width="1440"
+        Width="1480"
         MinHeight="560"
         MinWidth="1180">
     <Window.Resources>
@@ -125,7 +125,7 @@
                                 <TextBox x:Name="StrengthValueText"
                                          Grid.Column="4"
                                          Text="5.00"
-                                         Width="58"
+                                         Width="45"
                                          Margin="8,0,0,0"
                                          Padding="4,2"
                                          VerticalContentAlignment="Center"
@@ -201,7 +201,7 @@
                                 <TextBox x:Name="LevelValueText"
                                          Grid.Column="4"
                                          Text="1.00"
-                                         Width="58"
+                                         Width="45"
                                          Margin="8,0,0,0"
                                          Padding="4,2"
                                          VerticalContentAlignment="Center"
@@ -277,7 +277,7 @@
                                 <TextBox x:Name="BlurSharpValueText"
                                          Grid.Column="4"
                                          Text="0.00"
-                                         Width="58"
+                                         Width="45"
                                          Margin="8,0,0,0"
                                          Padding="4,2"
                                          VerticalContentAlignment="Center"
@@ -424,7 +424,7 @@
                                 <TextBox x:Name="DisplacementLevelValueText"
                                          Grid.Column="4"
                                          Text="1.00"
-                                         Width="58"
+                                         Width="45"
                                          Margin="8,0,0,0"
                                          Padding="4,2"
                                          VerticalContentAlignment="Center"
@@ -480,7 +480,7 @@
                                 <TextBox x:Name="DisplacementBlurSharpValueText"
                                          Grid.Column="4"
                                          Text="0.00"
-                                         Width="58"
+                                         Width="45"
                                          Margin="8,0,0,0"
                                          Padding="4,2"
                                          VerticalContentAlignment="Center"
@@ -536,6 +536,453 @@
                                       Checked="DisplacementSettingsChanged"
                                       Unchecked="DisplacementSettingsChanged" />
                         </StackPanel>
+                    </TabItem>
+
+                    <TabItem Header="HDRP Mask Map">
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="AO Radius"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpAoRadiusButton_Click" />
+                                    <Slider x:Name="HdrpAoRadiusSlider"
+                                            Grid.Column="2"
+                                            Minimum="1"
+                                            Maximum="32"
+                                            Value="8"
+                                            TickFrequency="1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpAoRadiusButton_Click" />
+                                    <TextBox x:Name="HdrpAoRadiusValueText"
+                                             Grid.Column="4"
+                                             Text="8.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpAoRadiusValueText_LostFocus"
+                                             KeyDown="HdrpAoRadiusValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpAoRadiusButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="AO Strength"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpAoStrengthButton_Click" />
+                                    <Slider x:Name="HdrpAoStrengthSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="5"
+                                            Value="1"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpAoStrengthButton_Click" />
+                                    <TextBox x:Name="HdrpAoStrengthValueText"
+                                             Grid.Column="4"
+                                             Text="1.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpAoStrengthValueText_LostFocus"
+                                             KeyDown="HdrpAoStrengthValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpAoStrengthButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Level"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpLevelButton_Click" />
+                                    <Slider x:Name="HdrpLevelSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="3"
+                                            Value="1"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpLevelButton_Click" />
+                                    <TextBox x:Name="HdrpLevelValueText"
+                                             Grid.Column="4"
+                                             Text="1.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpLevelValueText_LostFocus"
+                                             KeyDown="HdrpLevelValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpLevelButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Blur / Sharp"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpBlurSharpButton_Click" />
+                                    <Slider x:Name="HdrpBlurSharpSlider"
+                                            Grid.Column="2"
+                                            Minimum="-10"
+                                            Maximum="10"
+                                            Value="0"
+                                            TickFrequency="1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpBlurSharpButton_Click" />
+                                    <TextBox x:Name="HdrpBlurSharpValueText"
+                                             Grid.Column="4"
+                                             Text="0.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpBlurSharpValueText_LostFocus"
+                                             KeyDown="HdrpBlurSharpValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpBlurSharpButton_Click" />
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Channel Source"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HdrpChannelSourceComboBox"
+                                              MinWidth="116"
+                                              Margin="0,0,20,0"
+                                              SelectionChanged="HdrpMaskSettingsChanged">
+                                        <ComboBoxItem Content="Luminance"
+                                                      Tag="Luminance"
+                                                      IsSelected="True" />
+                                        <ComboBoxItem Content="Red"
+                                                      Tag="Red" />
+                                        <ComboBoxItem Content="Green"
+                                                      Tag="Green" />
+                                        <ComboBoxItem Content="Blue"
+                                                      Tag="Blue" />
+                                        <ComboBoxItem Content="Alpha"
+                                                      Tag="Alpha" />
+                                    </ComboBox>
+                                    <TextBlock Text="Edge Mode"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HdrpEdgeModeComboBox"
+                                              MinWidth="96"
+                                              SelectionChanged="HdrpMaskSettingsChanged">
+                                        <ComboBoxItem Content="Clamp"
+                                                      Tag="Clamp"
+                                                      IsSelected="True" />
+                                        <ComboBoxItem Content="Wrap"
+                                                      Tag="Wrap" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Metallic"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpMetallicButton_Click" />
+                                    <Slider x:Name="HdrpMetallicSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpMetallicButton_Click" />
+                                    <TextBox x:Name="HdrpMetallicValueText"
+                                             Grid.Column="4"
+                                             Text="0.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpMetallicValueText_LostFocus"
+                                             KeyDown="HdrpMetallicValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpMetallicButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Detail Mask"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpDetailMaskButton_Click" />
+                                    <Slider x:Name="HdrpDetailMaskSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpDetailMaskButton_Click" />
+                                    <TextBox x:Name="HdrpDetailMaskValueText"
+                                             Grid.Column="4"
+                                             Text="0.00"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpDetailMaskValueText_LostFocus"
+                                             KeyDown="HdrpDetailMaskValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpDetailMaskButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Smoothness"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <Button Grid.Column="1"
+                                            Content="-"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="0,0,6,0"
+                                            Click="DecreaseHdrpSmoothnessButton_Click" />
+                                    <Slider x:Name="HdrpSmoothnessSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0.5"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="HdrpMaskSettingsChanged" />
+                                    <Button Grid.Column="3"
+                                            Content="+"
+                                            Width="18"
+                                            Height="18"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            Click="IncreaseHdrpSmoothnessButton_Click" />
+                                    <TextBox x:Name="HdrpSmoothnessValueText"
+                                             Grid.Column="4"
+                                             Text="0.50"
+                                             Width="45"
+                                             Margin="8,0,0,0"
+                                             Padding="4,2"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="HdrpSmoothnessValueText_LostFocus"
+                                             KeyDown="HdrpSmoothnessValueText_KeyDown" />
+                                    <Button Grid.Column="5"
+                                            Content="Reset"
+                                            MinWidth="42"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0"
+                                            Click="ResetHdrpSmoothnessButton_Click" />
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,0,0,8">
+                                    <TextBlock Text="Preview Channel"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HdrpPreviewChannelComboBox"
+                                              MinWidth="152"
+                                              SelectionChanged="HdrpMaskPreviewChannelChanged">
+                                        <ComboBoxItem Content="Packed"
+                                                      Tag="Packed" />
+                                        <ComboBoxItem Content="Metallic"
+                                                      Tag="Metallic" />
+                                        <ComboBoxItem Content="Ambient Occlusion"
+                                                      Tag="AmbientOcclusion"
+                                                      IsSelected="True" />
+                                        <ComboBoxItem Content="Detail Mask"
+                                                      Tag="DetailMask" />
+                                        <ComboBoxItem Content="Smoothness"
+                                                      Tag="Smoothness" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <CheckBox x:Name="InvertHdrpAoCheckBox"
+                                          Content="Invert AO"
+                                          VerticalAlignment="Center"
+                                          Checked="HdrpMaskSettingsChanged"
+                                          Unchecked="HdrpMaskSettingsChanged" />
+                            </StackPanel>
+                        </Grid>
                     </TabItem>
                 </TabControl>
 
@@ -601,7 +1048,7 @@
                         <TextBox x:Name="DisplacementHeightScaleValueText"
                                  Grid.Column="4"
                                  Text="0.10"
-                                 Width="58"
+                                 Width="45"
                                  Margin="8,0,0,0"
                                  Padding="4,2"
                                  VerticalContentAlignment="Center"

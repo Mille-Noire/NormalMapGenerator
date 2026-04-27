@@ -66,6 +66,26 @@ Acceptance criteria:
 - Keyboard escape or a visible close/restore button returns to the normal
   three-column preview layout.
 
+## PBR Preview Material
+
+Status: Todo
+
+Show the visual effect of generated packed mask maps in the 3D preview once the
+map-generation workflow is stable.
+
+Ideas:
+- Add a dedicated PBR preview material path for HDRP-style mask-map channels.
+- Let the 3D preview consume metallic, ambient occlusion, detail mask, and
+  smoothness from the generated mask map where Helix material support allows it.
+- Keep the current neutral preview material as a fallback when the packed map
+  cannot be represented faithfully.
+
+Acceptance criteria:
+- Toggling PBR preview changes only the 3D preview material, not exported maps.
+- Metallic and smoothness changes are visibly represented in the preview.
+- Unsupported channels are either approximated clearly or not shown.
+- Normal and displacement preview behavior remains unchanged.
+
 ## Additional Normal Map Generation Controls
 
 Status: Todo

@@ -28,6 +28,13 @@ public partial class MainWindow : Window
     private const double DefaultDisplacementLevel = 1.0;
     private const double DefaultDisplacementBlurSharp = 0.0;
     private const double DefaultDisplacementHeightScale = 0.10;
+    private const double DefaultHdrpAoRadius = 8.0;
+    private const double DefaultHdrpAoStrength = 1.0;
+    private const double DefaultHdrpLevel = 1.0;
+    private const double DefaultHdrpBlurSharp = 0.0;
+    private const double DefaultHdrpMetallic = 0.0;
+    private const double DefaultHdrpDetailMask = 0.0;
+    private const double DefaultHdrpSmoothness = 0.50;
     private const int PreviewPlaneSubdivisions = 64;
     private const int PreviewCubeSubdivisions = 32;
     private const int PreviewSphereLatitudeSegments = 32;
@@ -37,11 +44,16 @@ public partial class MainWindow : Window
     private const int PreviewCylinderCapRings = 16;
     private const float PreviewHardEdgeFadeWidth = 0.08f;
     private const int MaxPreviewBitmapDimension = 1024;
+    private const int MaxHdrpMaskPreviewBitmapDimension = 512;
 
     private BitmapSource? _sourceFullResolutionImage;
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
     private BitmapSource? _displacementMap;
+    private BitmapSource? _hdrpAmbientOcclusionMap;
+    private BitmapSource? _hdrpMaskMap;
+    private BitmapSource? _hdrpMaskMapPreview;
+    private HdrpMaskAoGenerationSettings? _hdrpAmbientOcclusionSettings;
     private string? _sourceFilePath;
     private Image? _sourcePreviewImage;
     private Image? _generatedMapPreviewImage;
@@ -67,6 +79,24 @@ public partial class MainWindow : Window
     private ComboBox? _displacementChannelSourceComboBox;
     private ComboBox? _displacementEdgeModeComboBox;
     private CheckBox? _invertDisplacementCheckBox;
+    private Slider? _hdrpAoRadiusSlider;
+    private TextBox? _hdrpAoRadiusValueText;
+    private Slider? _hdrpAoStrengthSlider;
+    private TextBox? _hdrpAoStrengthValueText;
+    private Slider? _hdrpLevelSlider;
+    private TextBox? _hdrpLevelValueText;
+    private Slider? _hdrpBlurSharpSlider;
+    private TextBox? _hdrpBlurSharpValueText;
+    private Slider? _hdrpMetallicSlider;
+    private TextBox? _hdrpMetallicValueText;
+    private Slider? _hdrpDetailMaskSlider;
+    private TextBox? _hdrpDetailMaskValueText;
+    private Slider? _hdrpSmoothnessSlider;
+    private TextBox? _hdrpSmoothnessValueText;
+    private ComboBox? _hdrpChannelSourceComboBox;
+    private ComboBox? _hdrpEdgeModeComboBox;
+    private ComboBox? _hdrpPreviewChannelComboBox;
+    private CheckBox? _invertHdrpAoCheckBox;
     private CheckBox? _useNormalMapCheckBox;
     private CheckBox? _useDisplacementMapCheckBox;
     private CheckBox? _useHeightmapAlbedoCheckBox;
@@ -80,12 +110,16 @@ public partial class MainWindow : Window
     private bool _is3DPreviewAvailable;
     private NormalPreviewRenderRequest? _pendingNormalPreviewRequest;
     private DisplacementPreviewRenderRequest? _pendingDisplacementPreviewRequest;
+    private HdrpMaskPreviewRenderRequest? _pendingHdrpMaskPreviewRequest;
+    private CancellationTokenSource? _hdrpMaskPreviewCancellationTokenSource;
     private bool _isNormalPreviewWorkerRunning;
     private bool _isDisplacementPreviewWorkerRunning;
+    private bool _isHdrpMaskPreviewWorkerRunning;
     private PreviewGeometryRenderRequest? _pendingPreviewGeometryRequest;
     private bool _isPreviewGeometryWorkerRunning;
     private int _normalPreviewUpdateVersion;
     private int _displacementPreviewUpdateVersion;
+    private int _hdrpMaskPreviewUpdateVersion;
     private int _previewGeometryUpdateVersion;
 
     public MainWindow()
@@ -99,11 +133,14 @@ public partial class MainWindow : Window
         UpdateDisplacementLevelText();
         UpdateDisplacementBlurSharpText();
         UpdateDisplacementHeightScaleText();
+        UpdateHdrpMaskTexts();
         UpdateActiveMapPreview();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _hdrpMaskPreviewCancellationTokenSource?.Cancel();
+        _hdrpMaskPreviewCancellationTokenSource?.Dispose();
         _previewEffectsManager?.Dispose();
         base.OnClosed(e);
     }
@@ -138,6 +175,10 @@ public partial class MainWindow : Window
             _sourceFilePath = dialog.FileName;
             _normalMap = null;
             _displacementMap = null;
+            _hdrpAmbientOcclusionMap = null;
+            _hdrpMaskMap = null;
+            _hdrpMaskMapPreview = null;
+            _hdrpAmbientOcclusionSettings = null;
             if (_sourcePreviewImage is not null)
             {
                 _sourcePreviewImage.Source = previewImage;
@@ -148,6 +189,7 @@ public partial class MainWindow : Window
             Update3DPreview();
             ScheduleNormalMapRegeneration();
             ScheduleDisplacementMapRegeneration();
+            ScheduleHdrpMaskMapRegeneration();
         }
         catch (Exception exception) when (IsImageLoadException(exception))
         {
@@ -164,7 +206,7 @@ public partial class MainWindow : Window
 
         SaveFileDialog dialog = new()
         {
-            Title = IsDisplacementTabActive() ? "Export Displacement Map" : "Export Normal Map",
+            Title = GetActiveExportTitle(),
             Filter = "PNG Files (*.png)|*.png",
             AddExtension = true,
             DefaultExt = ".png",
@@ -184,16 +226,24 @@ public partial class MainWindow : Window
             }
 
             BitmapSource sourceImage = _sourceFullResolutionImage;
-            bool exportDisplacement = IsDisplacementTabActive();
-            NormalMapGenerationSettings? normalSettings = exportDisplacement ? null : CaptureNormalMapGenerationSettings();
-            DisplacementMapGenerationSettings? displacementSettings = exportDisplacement ? CaptureDisplacementMapGenerationSettings() : null;
+            ActiveMapKind activeMapKind = GetActiveMapKind();
+            NormalMapGenerationSettings? normalSettings = activeMapKind == ActiveMapKind.Normal ? CaptureNormalMapGenerationSettings() : null;
+            DisplacementMapGenerationSettings? displacementSettings = activeMapKind == ActiveMapKind.Displacement ? CaptureDisplacementMapGenerationSettings() : null;
+            HdrpMaskMapGenerationSettings? hdrpMaskSettings = activeMapKind == ActiveMapKind.HdrpMask ? CaptureHdrpMaskMapGenerationSettings() : null;
 
             BitmapSource? map = await Task.Run(() =>
             {
-                if (exportDisplacement)
+                if (activeMapKind == ActiveMapKind.Displacement)
                 {
                     return displacementSettings.HasValue
                         ? GenerateDisplacementMap(sourceImage, displacementSettings.Value)
+                        : null;
+                }
+
+                if (activeMapKind == ActiveMapKind.HdrpMask)
+                {
+                    return hdrpMaskSettings.HasValue
+                        ? GenerateHdrpMaskMap(sourceImage, hdrpMaskSettings.Value)
                         : null;
                 }
 
@@ -237,6 +287,18 @@ public partial class MainWindow : Window
         UpdateDisplacementLevelText();
         UpdateDisplacementBlurSharpText();
         ScheduleDisplacementMapRegeneration();
+    }
+
+    private void HdrpMaskSettingsChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateHdrpMaskTexts();
+        ScheduleHdrpMaskMapRegeneration();
+    }
+
+    private void HdrpMaskPreviewChannelChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateHdrpMaskMapPreview();
+        UpdateActiveMapPreview();
     }
 
     private void DisplacementHeightScaleChanged(object sender, RoutedEventArgs e)
@@ -403,6 +465,48 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DecreaseHdrpAoRadiusButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpAoRadiusSlider, -GetSliderStep());
+
+    private void IncreaseHdrpAoRadiusButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpAoRadiusSlider, GetSliderStep());
+
+    private void ResetHdrpAoRadiusButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpAoRadiusSlider, DefaultHdrpAoRadius);
+
+    private void DecreaseHdrpAoStrengthButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpAoStrengthSlider, -GetSliderStep());
+
+    private void IncreaseHdrpAoStrengthButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpAoStrengthSlider, GetSliderStep());
+
+    private void ResetHdrpAoStrengthButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpAoStrengthSlider, DefaultHdrpAoStrength);
+
+    private void DecreaseHdrpLevelButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpLevelSlider, -GetSliderStep());
+
+    private void IncreaseHdrpLevelButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpLevelSlider, GetSliderStep());
+
+    private void ResetHdrpLevelButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpLevelSlider, DefaultHdrpLevel);
+
+    private void DecreaseHdrpBlurSharpButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpBlurSharpSlider, -GetSliderStep());
+
+    private void IncreaseHdrpBlurSharpButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpBlurSharpSlider, GetSliderStep());
+
+    private void ResetHdrpBlurSharpButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpBlurSharpSlider, DefaultHdrpBlurSharp);
+
+    private void DecreaseHdrpMetallicButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpMetallicSlider, -GetSliderStep());
+
+    private void IncreaseHdrpMetallicButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpMetallicSlider, GetSliderStep());
+
+    private void ResetHdrpMetallicButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpMetallicSlider, DefaultHdrpMetallic);
+
+    private void DecreaseHdrpDetailMaskButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpDetailMaskSlider, -GetSliderStep());
+
+    private void IncreaseHdrpDetailMaskButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpDetailMaskSlider, GetSliderStep());
+
+    private void ResetHdrpDetailMaskButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpDetailMaskSlider, DefaultHdrpDetailMask);
+
+    private void DecreaseHdrpSmoothnessButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpSmoothnessSlider, -GetSliderStep());
+
+    private void IncreaseHdrpSmoothnessButton_Click(object sender, RoutedEventArgs e) => AdjustHdrpSlider(_hdrpSmoothnessSlider, GetSliderStep());
+
+    private void ResetHdrpSmoothnessButton_Click(object sender, RoutedEventArgs e) => ResetSlider(_hdrpSmoothnessSlider, DefaultHdrpSmoothness);
+
     private void StrengthValueText_LostFocus(object sender, RoutedEventArgs e)
     {
         CommitStrengthText();
@@ -487,6 +591,34 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HdrpAoRadiusValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpAoRadiusValueText, _hdrpAoRadiusSlider);
+
+    private void HdrpAoRadiusValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpAoRadiusValueText, _hdrpAoRadiusSlider);
+
+    private void HdrpAoStrengthValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpAoStrengthValueText, _hdrpAoStrengthSlider);
+
+    private void HdrpAoStrengthValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpAoStrengthValueText, _hdrpAoStrengthSlider);
+
+    private void HdrpLevelValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpLevelValueText, _hdrpLevelSlider);
+
+    private void HdrpLevelValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpLevelValueText, _hdrpLevelSlider);
+
+    private void HdrpBlurSharpValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpBlurSharpValueText, _hdrpBlurSharpSlider);
+
+    private void HdrpBlurSharpValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpBlurSharpValueText, _hdrpBlurSharpSlider);
+
+    private void HdrpMetallicValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpMetallicValueText, _hdrpMetallicSlider);
+
+    private void HdrpMetallicValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpMetallicValueText, _hdrpMetallicSlider);
+
+    private void HdrpDetailMaskValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpDetailMaskValueText, _hdrpDetailMaskSlider);
+
+    private void HdrpDetailMaskValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpDetailMaskValueText, _hdrpDetailMaskSlider);
+
+    private void HdrpSmoothnessValueText_LostFocus(object sender, RoutedEventArgs e) => CommitHdrpSliderText(_hdrpSmoothnessValueText, _hdrpSmoothnessSlider);
+
+    private void HdrpSmoothnessValueText_KeyDown(object sender, KeyEventArgs e) => CommitHdrpSliderTextOnEnter(e, _hdrpSmoothnessValueText, _hdrpSmoothnessSlider);
+
     private void ScheduleNormalMapRegeneration()
     {
         if (_sourceImage is null)
@@ -509,7 +641,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        BitmapSource sourceImage = _sourceImage;
+        BitmapSource sourceImage = CreatePreviewBitmap(_sourceImage, MaxHdrpMaskPreviewBitmapDimension);
         double strength = _strengthSlider.Value;
         double level = _levelSlider.Value;
         double blurSharp = _blurSharpSlider.Value;
@@ -519,7 +651,7 @@ public partial class MainWindow : Window
         bool invertY = _invertYCheckBox.IsChecked == true;
         int version = Interlocked.Increment(ref _normalPreviewUpdateVersion);
 
-        if (!IsDisplacementTabActive() && _exportMapButton is not null)
+        if (GetActiveMapKind() == ActiveMapKind.Normal && _exportMapButton is not null)
         {
             _exportMapButton.IsEnabled = false;
         }
@@ -591,6 +723,59 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ScheduleHdrpMaskMapRegeneration()
+    {
+        if (_sourceImage is null)
+        {
+            _hdrpAmbientOcclusionMap = null;
+            _hdrpMaskMap = null;
+            _hdrpMaskMapPreview = null;
+            _hdrpAmbientOcclusionSettings = null;
+            UpdateActiveMapPreview();
+            return;
+        }
+
+        HdrpMaskMapGenerationSettings? settings = CaptureHdrpMaskMapGenerationSettings();
+        if (!settings.HasValue)
+        {
+            return;
+        }
+
+        BitmapSource sourceImage = _sourceImage;
+        int version = Interlocked.Increment(ref _hdrpMaskPreviewUpdateVersion);
+        HdrpMaskAoGenerationSettings aoSettings = settings.Value.ToAoSettings();
+
+        _hdrpMaskPreviewCancellationTokenSource?.Cancel();
+
+        if (_hdrpAmbientOcclusionMap is not null
+            && _hdrpAmbientOcclusionSettings == aoSettings)
+        {
+            UpdateHdrpMaskMapFromAmbientOcclusion(settings.Value);
+            return;
+        }
+
+        _hdrpMaskPreviewCancellationTokenSource?.Dispose();
+        _hdrpMaskPreviewCancellationTokenSource = new CancellationTokenSource();
+
+        if (IsHdrpMaskMapTabActive() && _exportMapButton is not null)
+        {
+            _exportMapButton.IsEnabled = false;
+        }
+
+        _pendingHdrpMaskPreviewRequest = new HdrpMaskPreviewRenderRequest(
+            version,
+            sourceImage,
+            settings.Value,
+            aoSettings,
+            _hdrpMaskPreviewCancellationTokenSource.Token);
+
+        if (!_isHdrpMaskPreviewWorkerRunning)
+        {
+            _isHdrpMaskPreviewWorkerRunning = true;
+            _ = RunHdrpMaskPreviewWorkerAsync();
+        }
+    }
+
     private NormalMapGenerationSettings? CaptureNormalMapGenerationSettings()
     {
         if (_strengthSlider is null
@@ -629,6 +814,33 @@ public partial class MainWindow : Window
             _invertDisplacementCheckBox.IsChecked == true);
     }
 
+    private HdrpMaskMapGenerationSettings? CaptureHdrpMaskMapGenerationSettings()
+    {
+        if (_hdrpAoRadiusSlider is null
+            || _hdrpAoStrengthSlider is null
+            || _hdrpLevelSlider is null
+            || _hdrpBlurSharpSlider is null
+            || _hdrpMetallicSlider is null
+            || _hdrpDetailMaskSlider is null
+            || _hdrpSmoothnessSlider is null
+            || _invertHdrpAoCheckBox is null)
+        {
+            return null;
+        }
+
+        return new HdrpMaskMapGenerationSettings(
+            Math.Max(1, (int)Math.Round(_hdrpAoRadiusSlider.Value)),
+            _hdrpAoStrengthSlider.Value,
+            _hdrpLevelSlider.Value,
+            _hdrpBlurSharpSlider.Value,
+            GetSelectedHdrpHeightChannelSource(),
+            GetSelectedHdrpEdgeMode(),
+            _invertHdrpAoCheckBox.IsChecked == true,
+            _hdrpMetallicSlider.Value,
+            _hdrpDetailMaskSlider.Value,
+            _hdrpSmoothnessSlider.Value);
+    }
+
     private static BitmapSource? GenerateNormalMap(
         BitmapSource sourceImage,
         NormalMapGenerationSettings settings)
@@ -655,6 +867,54 @@ public partial class MainWindow : Window
             settings.Invert,
             settings.ChannelSource,
             settings.EdgeMode);
+    }
+
+    private static BitmapSource? GenerateHdrpMaskMap(
+        BitmapSource sourceImage,
+        HdrpMaskMapGenerationSettings settings)
+    {
+        return ImageProcessing.NormalMapGenerator.GenerateHdrpMaskMap(
+            sourceImage,
+            settings.AoRadius,
+            settings.AoStrength,
+            settings.Level,
+            settings.BlurSharp,
+            settings.InvertAo,
+            settings.Metallic,
+            settings.DetailMask,
+            settings.Smoothness,
+            settings.ChannelSource,
+            settings.EdgeMode);
+    }
+
+    private static BitmapSource? GenerateHdrpAmbientOcclusionMap(
+        BitmapSource sourceImage,
+        HdrpMaskAoGenerationSettings settings,
+        CancellationToken cancellationToken)
+    {
+        return ImageProcessing.NormalMapGenerator.GenerateHdrpAmbientOcclusionMap(
+            sourceImage,
+            settings.AoRadius,
+            settings.AoStrength,
+            settings.Level,
+            settings.BlurSharp,
+            settings.InvertAo,
+            settings.ChannelSource,
+            settings.EdgeMode,
+            cancellationToken);
+    }
+
+    private static BitmapSource? PackHdrpMaskMap(
+        BitmapSource ambientOcclusionMap,
+        HdrpMaskMapGenerationSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        return ImageProcessing.NormalMapGenerator.PackHdrpMaskMap(
+            ambientOcclusionMap,
+            settings.Metallic,
+            settings.DetailMask,
+            settings.Smoothness,
+            cancellationToken);
     }
 
     private async Task RunNormalPreviewWorkerAsync()
@@ -695,6 +955,28 @@ public partial class MainWindow : Window
             await RenderDisplacementPreviewAsync(request.Value);
 
             if (_pendingDisplacementPreviewRequest is not null)
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task RunHdrpMaskPreviewWorkerAsync()
+    {
+        while (true)
+        {
+            HdrpMaskPreviewRenderRequest? request = _pendingHdrpMaskPreviewRequest;
+            if (request is null)
+            {
+                _isHdrpMaskPreviewWorkerRunning = false;
+                return;
+            }
+
+            _pendingHdrpMaskPreviewRequest = null;
+
+            await RenderHdrpMaskPreviewAsync(request.Value);
+
+            if (_pendingHdrpMaskPreviewRequest is not null)
             {
                 await Task.Yield();
             }
@@ -776,6 +1058,54 @@ public partial class MainWindow : Window
             Update3DPreview();
 
             ShowError($"The displacement map could not be generated.\n\n{exception.Message}");
+        }
+    }
+
+    private async Task RenderHdrpMaskPreviewAsync(HdrpMaskPreviewRenderRequest request)
+    {
+        try
+        {
+            BitmapSource? ambientOcclusionMap = await Task.Run(
+                () => GenerateHdrpAmbientOcclusionMap(
+                    request.SourceImage,
+                    request.AoSettings,
+                    request.CancellationToken),
+                request.CancellationToken);
+
+            if (ambientOcclusionMap is null
+                || request.CancellationToken.IsCancellationRequested
+                || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
+            _hdrpAmbientOcclusionMap = ambientOcclusionMap;
+            _hdrpAmbientOcclusionSettings = request.AoSettings;
+
+            if (request.Version != _hdrpMaskPreviewUpdateVersion)
+            {
+                return;
+            }
+
+            UpdateHdrpMaskMapFromAmbientOcclusion(request.Settings);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (request.Version != _hdrpMaskPreviewUpdateVersion || !ReferenceEquals(_sourceImage, request.SourceImage))
+            {
+                return;
+            }
+
+            _hdrpAmbientOcclusionMap = null;
+            _hdrpMaskMap = null;
+            _hdrpMaskMapPreview = null;
+            _hdrpAmbientOcclusionSettings = null;
+            UpdateActiveMapPreview();
+
+            ShowError($"The HDRP mask map could not be generated.\n\n{exception.Message}");
         }
     }
 
@@ -936,6 +1266,93 @@ public partial class MainWindow : Window
         };
     }
 
+    private void UpdateHdrpMaskMapPreview()
+    {
+        _hdrpMaskMapPreview = _hdrpMaskMap is null
+            ? null
+            : CreateHdrpMaskMapPreview(_hdrpMaskMap, GetSelectedHdrpMaskPreviewChannel());
+    }
+
+    private void UpdateHdrpMaskMapFromAmbientOcclusion(HdrpMaskMapGenerationSettings settings)
+    {
+        if (_hdrpAmbientOcclusionMap is null)
+        {
+            return;
+        }
+
+        _hdrpMaskMap = PackHdrpMaskMap(_hdrpAmbientOcclusionMap, settings);
+        UpdateHdrpMaskMapPreview();
+        UpdateActiveMapPreview();
+    }
+
+    private static BitmapSource CreateHdrpMaskMapPreview(
+        BitmapSource maskMap,
+        HdrpMaskPreviewChannel previewChannel)
+    {
+        BitmapSource source = maskMap.Format == PixelFormats.Bgra32
+            ? maskMap
+            : new FormatConvertedBitmap(maskMap, PixelFormats.Bgra32, null, 0);
+        int width = source.PixelWidth;
+        int height = source.PixelHeight;
+        int stride = width * 4;
+        byte[] sourcePixels = new byte[stride * height];
+        source.CopyPixels(sourcePixels, stride, 0);
+
+        if (previewChannel == HdrpMaskPreviewChannel.Packed)
+        {
+            byte[] packedPreviewPixels = new byte[sourcePixels.Length];
+            for (int index = 0; index < sourcePixels.Length; index += 4)
+            {
+                packedPreviewPixels[index] = sourcePixels[index];
+                packedPreviewPixels[index + 1] = sourcePixels[index + 1];
+                packedPreviewPixels[index + 2] = sourcePixels[index + 2];
+                packedPreviewPixels[index + 3] = 255;
+            }
+
+            BitmapSource packedPreview = BitmapSource.Create(
+                width,
+                height,
+                source.DpiX,
+                source.DpiY,
+                PixelFormats.Bgra32,
+                null,
+                packedPreviewPixels,
+                stride);
+            packedPreview.Freeze();
+            return packedPreview;
+        }
+
+        byte[] previewPixels = new byte[sourcePixels.Length];
+        int sourceChannelOffset = previewChannel switch
+        {
+            HdrpMaskPreviewChannel.Metallic => 2,
+            HdrpMaskPreviewChannel.DetailMask => 0,
+            HdrpMaskPreviewChannel.Smoothness => 3,
+            _ => 1
+        };
+
+        for (int index = 0; index < sourcePixels.Length; index += 4)
+        {
+            byte gray = sourcePixels[index + sourceChannelOffset];
+            previewPixels[index] = gray;
+            previewPixels[index + 1] = gray;
+            previewPixels[index + 2] = gray;
+            previewPixels[index + 3] = 255;
+        }
+
+        BitmapSource preview = BitmapSource.Create(
+            width,
+            height,
+            source.DpiX,
+            source.DpiY,
+            PixelFormats.Bgra32,
+            null,
+            previewPixels,
+            stride);
+        preview.Freeze();
+        return preview;
+    }
+
     private void UpdateActiveMapPreview()
     {
         if (_generatedMapPreviewImage is null || _generatedMapPreviewTitle is null || _exportMapButton is null)
@@ -943,12 +1360,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsDisplacementTabActive())
+        ActiveMapKind activeMapKind = GetActiveMapKind();
+        if (activeMapKind == ActiveMapKind.Displacement)
         {
             _generatedMapPreviewTitle.Text = "Generated Displacement Map";
             _generatedMapPreviewImage.Source = _displacementMap;
             _exportMapButton.Content = "Export Displacement Map";
             _exportMapButton.IsEnabled = _displacementMap is not null;
+        }
+        else if (activeMapKind == ActiveMapKind.HdrpMask)
+        {
+            _generatedMapPreviewTitle.Text = "Generated HDRP Mask Map";
+            _generatedMapPreviewImage.Source = _hdrpMaskMapPreview;
+            _exportMapButton.Content = "Export HDRP Mask Map";
+            _exportMapButton.IsEnabled = _hdrpMaskMap is not null;
         }
         else
         {
@@ -961,12 +1386,32 @@ public partial class MainWindow : Window
 
     private BitmapSource? GetActiveGeneratedMap()
     {
-        return IsDisplacementTabActive() ? _displacementMap : _normalMap;
+        return GetActiveMapKind() switch
+        {
+            ActiveMapKind.Displacement => _displacementMap,
+            ActiveMapKind.HdrpMask => _hdrpMaskMap,
+            _ => _normalMap
+        };
+    }
+
+    private ActiveMapKind GetActiveMapKind()
+    {
+        return _mapSettingsTabControl?.SelectedIndex switch
+        {
+            1 => ActiveMapKind.Displacement,
+            2 => ActiveMapKind.HdrpMask,
+            _ => ActiveMapKind.Normal
+        };
     }
 
     private bool IsDisplacementTabActive()
     {
-        return _mapSettingsTabControl?.SelectedIndex == 1;
+        return GetActiveMapKind() == ActiveMapKind.Displacement;
+    }
+
+    private bool IsHdrpMaskMapTabActive()
+    {
+        return GetActiveMapKind() == ActiveMapKind.HdrpMask;
     }
 
     private PreviewShape GetSelectedPreviewShape()
@@ -1041,6 +1486,52 @@ public partial class MainWindow : Window
         return string.Equals(item.Tag as string, "Wrap", StringComparison.OrdinalIgnoreCase)
             ? NormalMapEdgeMode.Wrap
             : NormalMapEdgeMode.Clamp;
+    }
+
+    private HeightChannelSource GetSelectedHdrpHeightChannelSource()
+    {
+        if (_hdrpChannelSourceComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return HeightChannelSource.Luminance;
+        }
+
+        return (item.Tag as string) switch
+        {
+            "Red" => HeightChannelSource.Red,
+            "Green" => HeightChannelSource.Green,
+            "Blue" => HeightChannelSource.Blue,
+            "Alpha" => HeightChannelSource.Alpha,
+            _ => HeightChannelSource.Luminance
+        };
+    }
+
+    private NormalMapEdgeMode GetSelectedHdrpEdgeMode()
+    {
+        if (_hdrpEdgeModeComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return NormalMapEdgeMode.Clamp;
+        }
+
+        return string.Equals(item.Tag as string, "Wrap", StringComparison.OrdinalIgnoreCase)
+            ? NormalMapEdgeMode.Wrap
+            : NormalMapEdgeMode.Clamp;
+    }
+
+    private HdrpMaskPreviewChannel GetSelectedHdrpMaskPreviewChannel()
+    {
+        if (_hdrpPreviewChannelComboBox?.SelectedItem is not ComboBoxItem item)
+        {
+            return HdrpMaskPreviewChannel.AmbientOcclusion;
+        }
+
+        return (item.Tag as string) switch
+        {
+            "Packed" => HdrpMaskPreviewChannel.Packed,
+            "Metallic" => HdrpMaskPreviewChannel.Metallic,
+            "DetailMask" => HdrpMaskPreviewChannel.DetailMask,
+            "Smoothness" => HdrpMaskPreviewChannel.Smoothness,
+            _ => HdrpMaskPreviewChannel.AmbientOcclusion
+        };
     }
 
     private double GetDisplacementHeightScale()
@@ -1759,6 +2250,40 @@ public partial class MainWindow : Window
         NormalMapEdgeMode EdgeMode,
         bool Invert);
 
+    private readonly record struct HdrpMaskMapGenerationSettings(
+        int AoRadius,
+        double AoStrength,
+        double Level,
+        double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
+        bool InvertAo,
+        double Metallic,
+        double DetailMask,
+        double Smoothness)
+    {
+        public HdrpMaskAoGenerationSettings ToAoSettings()
+        {
+            return new HdrpMaskAoGenerationSettings(
+                AoRadius,
+                AoStrength,
+                Level,
+                BlurSharp,
+                ChannelSource,
+                EdgeMode,
+                InvertAo);
+        }
+    }
+
+    private readonly record struct HdrpMaskAoGenerationSettings(
+        int AoRadius,
+        double AoStrength,
+        double Level,
+        double BlurSharp,
+        HeightChannelSource ChannelSource,
+        NormalMapEdgeMode EdgeMode,
+        bool InvertAo);
+
     private static TextureModel CreateTextureModel(BitmapSource bitmap)
     {
         MemoryStream stream = new();
@@ -1789,11 +2314,34 @@ public partial class MainWindow : Window
         NormalMapEdgeMode EdgeMode,
         bool Invert);
 
+    private readonly record struct HdrpMaskPreviewRenderRequest(
+        int Version,
+        BitmapSource SourceImage,
+        HdrpMaskMapGenerationSettings Settings,
+        HdrpMaskAoGenerationSettings AoSettings,
+        CancellationToken CancellationToken);
+
     private readonly record struct PreviewGeometryRenderRequest(
         int Version,
         PreviewShape Shape,
         BitmapSource? DisplacementMap,
         double HeightScale);
+
+    private enum ActiveMapKind
+    {
+        Normal,
+        Displacement,
+        HdrpMask
+    }
+
+    private enum HdrpMaskPreviewChannel
+    {
+        Packed,
+        Metallic,
+        AmbientOcclusion,
+        DetailMask,
+        Smoothness
+    }
 
     private void UpdateStrengthText()
     {
@@ -1885,12 +2433,49 @@ public partial class MainWindow : Window
         SetDisplacementHeightScaleText(_displacementHeightScaleSlider.Value);
     }
 
+    private void UpdateHdrpMaskTexts()
+    {
+        UpdateSliderText(_hdrpAoRadiusValueText, _hdrpAoRadiusSlider);
+        UpdateSliderText(_hdrpAoStrengthValueText, _hdrpAoStrengthSlider);
+        UpdateSliderText(_hdrpLevelValueText, _hdrpLevelSlider);
+        UpdateSliderText(_hdrpBlurSharpValueText, _hdrpBlurSharpSlider);
+        UpdateSliderText(_hdrpMetallicValueText, _hdrpMetallicSlider);
+        UpdateSliderText(_hdrpDetailMaskValueText, _hdrpDetailMaskSlider);
+        UpdateSliderText(_hdrpSmoothnessValueText, _hdrpSmoothnessSlider);
+    }
+
+    private static void UpdateSliderText(TextBox? textBox, Slider? slider)
+    {
+        if (textBox is null || slider is null || textBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetSliderText(textBox, slider.Value);
+    }
+
     private static void AdjustSlider(Slider slider, double delta)
     {
         slider.Value = Math.Clamp(
             Math.Round((slider.Value + delta) * 100.0) / 100.0,
             slider.Minimum,
             slider.Maximum);
+    }
+
+    private static void AdjustHdrpSlider(Slider? slider, double delta)
+    {
+        if (slider is not null)
+        {
+            AdjustSlider(slider, delta);
+        }
+    }
+
+    private static void ResetSlider(Slider? slider, double defaultValue)
+    {
+        if (slider is not null)
+        {
+            slider.Value = defaultValue;
+        }
     }
 
     private static double GetSliderStep()
@@ -1988,6 +2573,30 @@ public partial class MainWindow : Window
         SetDisplacementHeightScaleText(_displacementHeightScaleSlider.Value);
     }
 
+    private static void CommitHdrpSliderText(TextBox? textBox, Slider? slider)
+    {
+        if (textBox is null || slider is null)
+        {
+            return;
+        }
+
+        if (TryParseSliderValue(textBox.Text, out double value))
+        {
+            slider.Value = Math.Clamp(value, slider.Minimum, slider.Maximum);
+        }
+
+        SetSliderText(textBox, slider.Value);
+    }
+
+    private static void CommitHdrpSliderTextOnEnter(KeyEventArgs e, TextBox? textBox, Slider? slider)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitHdrpSliderText(textBox, slider);
+            e.Handled = true;
+        }
+    }
+
     private void SetStrengthText(double value)
     {
         if (_strengthValueText is null)
@@ -2048,6 +2657,11 @@ public partial class MainWindow : Window
         _displacementHeightScaleValueText.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
+    private static void SetSliderText(TextBox textBox, double value)
+    {
+        textBox.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
     private void BindNamedControls()
     {
         _sourcePreviewImage = FindRequiredControl<Image>("SourcePreviewImage");
@@ -2074,6 +2688,24 @@ public partial class MainWindow : Window
         _displacementChannelSourceComboBox = FindRequiredControl<ComboBox>("DisplacementChannelSourceComboBox");
         _displacementEdgeModeComboBox = FindRequiredControl<ComboBox>("DisplacementEdgeModeComboBox");
         _invertDisplacementCheckBox = FindRequiredControl<CheckBox>("InvertDisplacementCheckBox");
+        _hdrpAoRadiusSlider = FindRequiredControl<Slider>("HdrpAoRadiusSlider");
+        _hdrpAoRadiusValueText = FindRequiredControl<TextBox>("HdrpAoRadiusValueText");
+        _hdrpAoStrengthSlider = FindRequiredControl<Slider>("HdrpAoStrengthSlider");
+        _hdrpAoStrengthValueText = FindRequiredControl<TextBox>("HdrpAoStrengthValueText");
+        _hdrpLevelSlider = FindRequiredControl<Slider>("HdrpLevelSlider");
+        _hdrpLevelValueText = FindRequiredControl<TextBox>("HdrpLevelValueText");
+        _hdrpBlurSharpSlider = FindRequiredControl<Slider>("HdrpBlurSharpSlider");
+        _hdrpBlurSharpValueText = FindRequiredControl<TextBox>("HdrpBlurSharpValueText");
+        _hdrpMetallicSlider = FindRequiredControl<Slider>("HdrpMetallicSlider");
+        _hdrpMetallicValueText = FindRequiredControl<TextBox>("HdrpMetallicValueText");
+        _hdrpDetailMaskSlider = FindRequiredControl<Slider>("HdrpDetailMaskSlider");
+        _hdrpDetailMaskValueText = FindRequiredControl<TextBox>("HdrpDetailMaskValueText");
+        _hdrpSmoothnessSlider = FindRequiredControl<Slider>("HdrpSmoothnessSlider");
+        _hdrpSmoothnessValueText = FindRequiredControl<TextBox>("HdrpSmoothnessValueText");
+        _hdrpChannelSourceComboBox = FindRequiredControl<ComboBox>("HdrpChannelSourceComboBox");
+        _hdrpEdgeModeComboBox = FindRequiredControl<ComboBox>("HdrpEdgeModeComboBox");
+        _hdrpPreviewChannelComboBox = FindRequiredControl<ComboBox>("HdrpPreviewChannelComboBox");
+        _invertHdrpAoCheckBox = FindRequiredControl<CheckBox>("InvertHdrpAoCheckBox");
         _useNormalMapCheckBox = FindRequiredControl<CheckBox>("UseNormalMapCheckBox");
         _useDisplacementMapCheckBox = FindRequiredControl<CheckBox>("UseDisplacementMapCheckBox");
         _useHeightmapAlbedoCheckBox = FindRequiredControl<CheckBox>("UseHeightmapAlbedoCheckBox");
@@ -2113,13 +2745,28 @@ public partial class MainWindow : Window
 
     private string BuildDefaultExportFileName()
     {
-        string suffix = IsDisplacementTabActive() ? "displacement" : "normal";
+        string suffix = GetActiveMapKind() switch
+        {
+            ActiveMapKind.Displacement => "displacement",
+            ActiveMapKind.HdrpMask => "hdrp_mask",
+            _ => "normal"
+        };
         if (string.IsNullOrWhiteSpace(_sourceFilePath))
         {
             return $"{suffix}_map.png";
         }
 
         return $"{Path.GetFileNameWithoutExtension(_sourceFilePath)}_{suffix}.png";
+    }
+
+    private string GetActiveExportTitle()
+    {
+        return GetActiveMapKind() switch
+        {
+            ActiveMapKind.Displacement => "Export Displacement Map",
+            ActiveMapKind.HdrpMask => "Export HDRP Mask Map",
+            _ => "Export Normal Map"
+        };
     }
 
     private static BitmapImage LoadBitmap(string filePath)
@@ -2135,13 +2782,18 @@ public partial class MainWindow : Window
 
     private static BitmapSource CreatePreviewBitmap(BitmapSource source)
     {
+        return CreatePreviewBitmap(source, MaxPreviewBitmapDimension);
+    }
+
+    private static BitmapSource CreatePreviewBitmap(BitmapSource source, int maxDimension)
+    {
         int largestDimension = Math.Max(source.PixelWidth, source.PixelHeight);
-        if (largestDimension <= MaxPreviewBitmapDimension)
+        if (largestDimension <= maxDimension)
         {
             return source;
         }
 
-        double scale = MaxPreviewBitmapDimension / (double)largestDimension;
+        double scale = maxDimension / (double)largestDimension;
         TransformedBitmap preview = new(source, new ScaleTransform(scale, scale));
         preview.Freeze();
         return preview;
