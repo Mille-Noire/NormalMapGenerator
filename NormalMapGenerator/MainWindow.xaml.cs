@@ -14,6 +14,10 @@ namespace NormalMapGenerator;
 
 public partial class MainWindow : Window
 {
+    private const double DefaultStrength = 5.0;
+    private const double DefaultLevel = 1.0;
+    private const double DefaultBlurSharp = 0.0;
+
     private BitmapSource? _sourceImage;
     private BitmapSource? _normalMap;
     private string? _sourceFilePath;
@@ -139,6 +143,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ResetStrengthButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_strengthSlider is not null)
+        {
+            _strengthSlider.Value = DefaultStrength;
+        }
+    }
+
     private void DecreaseLevelButton_Click(object sender, RoutedEventArgs e)
     {
         if (_levelSlider is not null)
@@ -155,6 +167,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ResetLevelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_levelSlider is not null)
+        {
+            _levelSlider.Value = DefaultLevel;
+        }
+    }
+
     private void DecreaseBlurSharpButton_Click(object sender, RoutedEventArgs e)
     {
         if (_blurSharpSlider is not null)
@@ -168,6 +188,14 @@ public partial class MainWindow : Window
         if (_blurSharpSlider is not null)
         {
             AdjustSlider(_blurSharpSlider, GetSliderStep());
+        }
+    }
+
+    private void ResetBlurSharpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_blurSharpSlider is not null)
+        {
+            _blurSharpSlider.Value = DefaultBlurSharp;
         }
     }
 
