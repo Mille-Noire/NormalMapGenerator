@@ -6,9 +6,9 @@
         mc:Ignorable="d"
         Title="NormalMapGenerator"
         Height="720"
-        Width="1120"
+        Width="1440"
         MinHeight="560"
-        MinWidth="860">
+        MinWidth="1180">
     <Window.Resources>
         <Style x:Key="InfoBadgeStyle"
                TargetType="Border">
@@ -294,9 +294,15 @@
                         <CheckBox x:Name="InvertYCheckBox"
                                   Content="Invert Y"
                                   IsChecked="True"
+                                  Margin="0,0,16,0"
                                   VerticalAlignment="Center"
                                   Checked="SettingsChanged"
                                   Unchecked="SettingsChanged" />
+                        <CheckBox x:Name="UseHeightmapAlbedoCheckBox"
+                                  Content="Use Heightmap Albedo"
+                                  VerticalAlignment="Center"
+                                  Checked="UseHeightmapAlbedoChanged"
+                                  Unchecked="UseHeightmapAlbedoChanged" />
                     </StackPanel>
                 </StackPanel>
             </DockPanel>
@@ -305,6 +311,8 @@
         <Grid Grid.Row="1"
               Margin="0,16">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="16" />
                 <ColumnDefinition Width="*" />
@@ -322,6 +330,11 @@
             <TextBlock Grid.Row="0"
                        Grid.Column="2"
                        Text="Generated Normal Map"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8" />
+            <TextBlock Grid.Row="0"
+                       Grid.Column="4"
+                       Text="3D Preview"
                        FontWeight="SemiBold"
                        Margin="0,0,0,8" />
 
@@ -343,6 +356,24 @@
                 <Image x:Name="NormalPreviewImage"
                        Stretch="Uniform"
                        SnapsToDevicePixels="True" />
+            </Border>
+
+            <Border Grid.Row="1"
+                    Grid.Column="4"
+                    BorderBrush="#D0D5DD"
+                    BorderThickness="1"
+                    Background="#111827">
+                <Grid>
+                    <ContentControl x:Name="Preview3DHost" />
+                    <TextBlock x:Name="Preview3DStatusText"
+                               Text="3D preview unavailable"
+                               Foreground="#F8FAFC"
+                               Background="#99111827"
+                               Padding="8,4"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                </Grid>
             </Border>
         </Grid>
 

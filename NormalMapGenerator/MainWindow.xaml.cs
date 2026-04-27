@@ -6,9 +6,15 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using HelixToolkit;
+using HelixToolkit.Maths;
+using HelixToolkit.SharpDX;
+using HelixToolkit.Wpf.SharpDX;
 using Microsoft.Win32;
 using NormalMapGenerator.ImageProcessing;
+using Media3D = System.Windows.Media.Media3D;
 
 namespace NormalMapGenerator;
 
@@ -32,6 +38,14 @@ public partial class MainWindow : Window
     private TextBox? _blurSharpValueText;
     private CheckBox? _invertXCheckBox;
     private CheckBox? _invertYCheckBox;
+    private CheckBox? _useHeightmapAlbedoCheckBox;
+    private ContentControl? _preview3DHost;
+    private Viewport3DX? _previewViewport3D;
+    private TextBlock? _preview3DStatusText;
+    private DefaultEffectsManager? _previewEffectsManager;
+    private MeshGeometryModel3D? _previewPlaneModel;
+    private PhongMaterial? _previewMaterial;
+    private bool _is3DPreviewAvailable;
     private PreviewRenderRequest? _pendingPreviewRequest;
     private bool _isPreviewWorkerRunning;
     private int _previewUpdateVersion;
@@ -40,9 +54,16 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         BindNamedControls();
+        Initialize3DPreview();
         UpdateStrengthText();
         UpdateLevelText();
         UpdateBlurSharpText();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _previewEffectsManager?.Dispose();
+        base.OnClosed(e);
     }
 
     private void LoadHeightmapButton_Click(object sender, RoutedEventArgs e)
@@ -246,6 +267,7 @@ public partial class MainWindow : Window
         if (_sourceImage is null)
         {
             _normalMap = null;
+            Update3DPreview(null);
 
             if (_normalPreviewImage is not null)
             {
@@ -344,6 +366,7 @@ public partial class MainWindow : Window
 
             _normalMap = normalMap;
             _normalPreviewImage.Source = normalMap;
+            Update3DPreview(normalMap);
             _exportNormalMapButton.IsEnabled = true;
         }
         catch (Exception exception)
@@ -354,6 +377,7 @@ public partial class MainWindow : Window
             }
 
             _normalMap = null;
+            Update3DPreview(null);
 
             if (_normalPreviewImage is not null)
             {
@@ -367,6 +391,186 @@ public partial class MainWindow : Window
 
             ShowError($"The normal map could not be generated.\n\n{exception.Message}");
         }
+    }
+
+    private void UseHeightmapAlbedoChanged(object sender, RoutedEventArgs e)
+    {
+        Update3DPreview(_normalMap);
+    }
+
+    private void Initialize3DPreview()
+    {
+        if (_preview3DHost is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _previewViewport3D = new Viewport3DX
+            {
+                BackgroundColor = System.Windows.Media.Color.FromRgb(17, 24, 39),
+                ShowCoordinateSystem = false,
+                ShowFrameRate = false,
+                ShowViewCube = false,
+                IsShadowMappingEnabled = false
+            };
+            _previewEffectsManager = new DefaultEffectsManager();
+            _previewMaterial = CreatePreviewMaterial();
+            _previewPlaneModel = new MeshGeometryModel3D
+            {
+                Geometry = CreatePreviewPlaneGeometry(),
+                Material = _previewMaterial,
+                CullMode = SharpDX.Direct3D11.CullMode.Back,
+                IsHitTestVisible = false
+            };
+
+            _previewViewport3D.EffectsManager = _previewEffectsManager;
+            _previewViewport3D.Camera = new PerspectiveCamera
+            {
+                Position = new Media3D.Point3D(0, 0, 2.35),
+                LookDirection = new Media3D.Vector3D(0, 0, -2.35),
+                UpDirection = new Media3D.Vector3D(0, 1, 0),
+                FarPlaneDistance = 100,
+                NearPlaneDistance = 0.01
+            };
+
+            _previewViewport3D.Items.Add(new AmbientLight3D
+            {
+                Color = System.Windows.Media.Color.FromRgb(72, 72, 72)
+            });
+            _previewViewport3D.Items.Add(new DirectionalLight3D
+            {
+                Color = Colors.White,
+                Direction = new Media3D.Vector3D(-0.35, -0.55, -1.0)
+            });
+            _previewViewport3D.Items.Add(_previewPlaneModel);
+            _preview3DHost.Content = _previewViewport3D;
+            _is3DPreviewAvailable = true;
+        }
+        catch (Exception exception)
+        {
+            _is3DPreviewAvailable = false;
+            if (_preview3DStatusText is not null)
+            {
+                _preview3DStatusText.Visibility = Visibility.Visible;
+            }
+
+            ShowError($"The 3D preview could not be initialized.\n\n{exception.Message}");
+        }
+    }
+
+    private void Update3DPreview(BitmapSource? normalMap)
+    {
+        if (!_is3DPreviewAvailable || _previewMaterial is null || _previewPlaneModel is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (normalMap is null)
+            {
+                _previewMaterial.NormalMap = null;
+                _previewMaterial.RenderNormalMap = false;
+                _previewMaterial.DiffuseMap = null;
+                _previewMaterial.RenderDiffuseMap = false;
+                _previewPlaneModel.Visibility = Visibility.Hidden;
+                return;
+            }
+
+            _previewMaterial.NormalMap = CreateTextureModel(normalMap);
+            _previewMaterial.RenderNormalMap = true;
+
+            if (_useHeightmapAlbedoCheckBox?.IsChecked == true && _sourceImage is not null)
+            {
+                _previewMaterial.DiffuseMap = CreateTextureModel(_sourceImage);
+                _previewMaterial.RenderDiffuseMap = true;
+            }
+            else
+            {
+                _previewMaterial.DiffuseMap = null;
+                _previewMaterial.RenderDiffuseMap = false;
+            }
+
+            _previewPlaneModel.Visibility = Visibility.Visible;
+        }
+        catch (Exception exception)
+        {
+            _is3DPreviewAvailable = false;
+            if (_preview3DStatusText is not null)
+            {
+                _preview3DStatusText.Visibility = Visibility.Visible;
+            }
+
+            ShowError($"The 3D preview could not be updated.\n\n{exception.Message}");
+        }
+    }
+
+    private static PhongMaterial CreatePreviewMaterial()
+    {
+        return new PhongMaterial
+        {
+            AmbientColor = new Color4(0.22f, 0.22f, 0.22f, 1.0f),
+            DiffuseColor = new Color4(0.62f, 0.62f, 0.62f, 1.0f),
+            SpecularColor = new Color4(0.08f, 0.08f, 0.08f, 1.0f),
+            SpecularShininess = 16,
+            RenderDiffuseMap = false,
+            RenderNormalMap = false
+        };
+    }
+
+    private static MeshGeometry3D CreatePreviewPlaneGeometry()
+    {
+        return new MeshGeometry3D
+        {
+            Positions = new Vector3Collection
+            {
+                new(-1.0f, -1.0f, 0.0f),
+                new(1.0f, -1.0f, 0.0f),
+                new(1.0f, 1.0f, 0.0f),
+                new(-1.0f, 1.0f, 0.0f)
+            },
+            TextureCoordinates = new Vector2Collection
+            {
+                new(0.0f, 1.0f),
+                new(1.0f, 1.0f),
+                new(1.0f, 0.0f),
+                new(0.0f, 0.0f)
+            },
+            Indices = new IntCollection { 0, 1, 2, 0, 2, 3 },
+            Normals = new Vector3Collection
+            {
+                new(0.0f, 0.0f, 1.0f),
+                new(0.0f, 0.0f, 1.0f),
+                new(0.0f, 0.0f, 1.0f),
+                new(0.0f, 0.0f, 1.0f)
+            },
+            Tangents = new Vector3Collection
+            {
+                new(1.0f, 0.0f, 0.0f),
+                new(1.0f, 0.0f, 0.0f),
+                new(1.0f, 0.0f, 0.0f),
+                new(1.0f, 0.0f, 0.0f)
+            },
+            BiTangents = new Vector3Collection
+            {
+                new(0.0f, 1.0f, 0.0f),
+                new(0.0f, 1.0f, 0.0f),
+                new(0.0f, 1.0f, 0.0f),
+                new(0.0f, 1.0f, 0.0f)
+            }
+        };
+    }
+
+    private static TextureModel CreateTextureModel(BitmapSource bitmap)
+    {
+        MemoryStream stream = new();
+        PngBitmapEncoder encoder = new();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        encoder.Save(stream);
+        stream.Position = 0;
+        return new TextureModel(stream, autoCloseStream: true);
     }
 
     private readonly record struct PreviewRenderRequest(
@@ -524,6 +728,9 @@ public partial class MainWindow : Window
         _blurSharpValueText = FindRequiredControl<TextBox>("BlurSharpValueText");
         _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");
         _invertYCheckBox = FindRequiredControl<CheckBox>("InvertYCheckBox");
+        _useHeightmapAlbedoCheckBox = FindRequiredControl<CheckBox>("UseHeightmapAlbedoCheckBox");
+        _preview3DHost = FindRequiredControl<ContentControl>("Preview3DHost");
+        _preview3DStatusText = FindRequiredControl<TextBlock>("Preview3DStatusText");
     }
 
     private T FindRequiredControl<T>(string name)
