@@ -39,11 +39,12 @@ public partial class MainWindow : Window
     private CheckBox? _invertXCheckBox;
     private CheckBox? _invertYCheckBox;
     private CheckBox? _useHeightmapAlbedoCheckBox;
+    private ComboBox? _previewShapeComboBox;
     private ContentControl? _preview3DHost;
     private Viewport3DX? _previewViewport3D;
     private TextBlock? _preview3DStatusText;
     private DefaultEffectsManager? _previewEffectsManager;
-    private MeshGeometryModel3D? _previewPlaneModel;
+    private MeshGeometryModel3D? _previewModel;
     private PhongMaterial? _previewMaterial;
     private bool _is3DPreviewAvailable;
     private PreviewRenderRequest? _pendingPreviewRequest;
@@ -398,6 +399,20 @@ public partial class MainWindow : Window
         Update3DPreview(_normalMap);
     }
 
+    private void PreviewShapeChanged(object sender, RoutedEventArgs e)
+    {
+        if (_previewModel is null)
+        {
+            return;
+        }
+
+        _previewModel.Geometry = GetSelectedPreviewShape() switch
+        {
+            PreviewShape.Cube => CreatePreviewCubeGeometry(),
+            _ => CreatePreviewPlaneGeometry()
+        };
+    }
+
     private void Initialize3DPreview()
     {
         if (_preview3DHost is null)
@@ -417,7 +432,7 @@ public partial class MainWindow : Window
             };
             _previewEffectsManager = new DefaultEffectsManager();
             _previewMaterial = CreatePreviewMaterial();
-            _previewPlaneModel = new MeshGeometryModel3D
+            _previewModel = new MeshGeometryModel3D
             {
                 Geometry = CreatePreviewPlaneGeometry(),
                 Material = _previewMaterial,
@@ -428,8 +443,8 @@ public partial class MainWindow : Window
             _previewViewport3D.EffectsManager = _previewEffectsManager;
             _previewViewport3D.Camera = new PerspectiveCamera
             {
-                Position = new Media3D.Point3D(0, 0, 2.35),
-                LookDirection = new Media3D.Vector3D(0, 0, -2.35),
+                Position = new Media3D.Point3D(1.7, 1.35, 2.6),
+                LookDirection = new Media3D.Vector3D(-1.7, -1.35, -2.6),
                 UpDirection = new Media3D.Vector3D(0, 1, 0),
                 FarPlaneDistance = 100,
                 NearPlaneDistance = 0.01
@@ -444,7 +459,7 @@ public partial class MainWindow : Window
                 Color = Colors.White,
                 Direction = new Media3D.Vector3D(-0.35, -0.55, -1.0)
             });
-            _previewViewport3D.Items.Add(_previewPlaneModel);
+            _previewViewport3D.Items.Add(_previewModel);
             _preview3DHost.Content = _previewViewport3D;
             _is3DPreviewAvailable = true;
         }
@@ -462,7 +477,7 @@ public partial class MainWindow : Window
 
     private void Update3DPreview(BitmapSource? normalMap)
     {
-        if (!_is3DPreviewAvailable || _previewMaterial is null || _previewPlaneModel is null)
+        if (!_is3DPreviewAvailable || _previewMaterial is null || _previewModel is null)
         {
             return;
         }
@@ -475,7 +490,7 @@ public partial class MainWindow : Window
                 _previewMaterial.RenderNormalMap = false;
                 _previewMaterial.DiffuseMap = null;
                 _previewMaterial.RenderDiffuseMap = false;
-                _previewPlaneModel.Visibility = Visibility.Hidden;
+                _previewModel.Visibility = Visibility.Hidden;
                 return;
             }
 
@@ -493,7 +508,7 @@ public partial class MainWindow : Window
                 _previewMaterial.RenderDiffuseMap = false;
             }
 
-            _previewPlaneModel.Visibility = Visibility.Visible;
+            _previewModel.Visibility = Visibility.Visible;
         }
         catch (Exception exception)
         {
@@ -518,6 +533,14 @@ public partial class MainWindow : Window
             RenderDiffuseMap = false,
             RenderNormalMap = false
         };
+    }
+
+    private PreviewShape GetSelectedPreviewShape()
+    {
+        return _previewShapeComboBox?.SelectedItem is ComboBoxItem item
+            && string.Equals(item.Tag as string, "Cube", StringComparison.OrdinalIgnoreCase)
+            ? PreviewShape.Cube
+            : PreviewShape.Plane;
     }
 
     private static MeshGeometry3D CreatePreviewPlaneGeometry()
@@ -561,6 +584,141 @@ public partial class MainWindow : Window
                 new(0.0f, 1.0f, 0.0f)
             }
         };
+    }
+
+    private static MeshGeometry3D CreatePreviewCubeGeometry()
+    {
+        Vector3Collection positions = new();
+        Vector2Collection textureCoordinates = new();
+        IntCollection indices = new();
+        Vector3Collection normals = new();
+        Vector3Collection tangents = new();
+        Vector3Collection biTangents = new();
+
+        MeshGeometry3D geometry = new()
+        {
+            Positions = positions,
+            TextureCoordinates = textureCoordinates,
+            Indices = indices,
+            Normals = normals,
+            Tangents = tangents,
+            BiTangents = biTangents
+        };
+
+        const float halfSize = 0.8f;
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(0.0f, 0.0f, halfSize),
+            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
+            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
+            halfSize);
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(0.0f, 0.0f, -halfSize),
+            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
+            new System.Numerics.Vector3(-1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
+            halfSize);
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(halfSize, 0.0f, 0.0f),
+            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
+            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
+            halfSize);
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(-halfSize, 0.0f, 0.0f),
+            new System.Numerics.Vector3(-1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
+            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
+            halfSize);
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(0.0f, halfSize, 0.0f),
+            new System.Numerics.Vector3(0.0f, 1.0f, 0.0f),
+            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 0.0f, -1.0f),
+            halfSize);
+        AddCubeFace(
+            positions,
+            textureCoordinates,
+            indices,
+            normals,
+            tangents,
+            biTangents,
+            new System.Numerics.Vector3(0.0f, -halfSize, 0.0f),
+            new System.Numerics.Vector3(0.0f, -1.0f, 0.0f),
+            new System.Numerics.Vector3(1.0f, 0.0f, 0.0f),
+            new System.Numerics.Vector3(0.0f, 0.0f, 1.0f),
+            halfSize);
+
+        return geometry;
+    }
+
+    private static void AddCubeFace(
+        Vector3Collection positions,
+        Vector2Collection textureCoordinates,
+        IntCollection indices,
+        Vector3Collection normals,
+        Vector3Collection tangents,
+        Vector3Collection biTangents,
+        System.Numerics.Vector3 center,
+        System.Numerics.Vector3 normal,
+        System.Numerics.Vector3 tangent,
+        System.Numerics.Vector3 bitangent,
+        float halfSize)
+    {
+        int startIndex = positions.Count;
+        positions.Add(center - (tangent * halfSize) - (bitangent * halfSize));
+        positions.Add(center + (tangent * halfSize) - (bitangent * halfSize));
+        positions.Add(center + (tangent * halfSize) + (bitangent * halfSize));
+        positions.Add(center - (tangent * halfSize) + (bitangent * halfSize));
+
+        textureCoordinates.Add(new System.Numerics.Vector2(0.0f, 1.0f));
+        textureCoordinates.Add(new System.Numerics.Vector2(1.0f, 1.0f));
+        textureCoordinates.Add(new System.Numerics.Vector2(1.0f, 0.0f));
+        textureCoordinates.Add(new System.Numerics.Vector2(0.0f, 0.0f));
+
+        indices.Add(startIndex);
+        indices.Add(startIndex + 1);
+        indices.Add(startIndex + 2);
+        indices.Add(startIndex);
+        indices.Add(startIndex + 2);
+        indices.Add(startIndex + 3);
+
+        for (int i = 0; i < 4; i++)
+        {
+            normals.Add(normal);
+            tangents.Add(tangent);
+            biTangents.Add(bitangent);
+        }
     }
 
     private static TextureModel CreateTextureModel(BitmapSource bitmap)
@@ -729,6 +887,7 @@ public partial class MainWindow : Window
         _invertXCheckBox = FindRequiredControl<CheckBox>("InvertXCheckBox");
         _invertYCheckBox = FindRequiredControl<CheckBox>("InvertYCheckBox");
         _useHeightmapAlbedoCheckBox = FindRequiredControl<CheckBox>("UseHeightmapAlbedoCheckBox");
+        _previewShapeComboBox = FindRequiredControl<ComboBox>("PreviewShapeComboBox");
         _preview3DHost = FindRequiredControl<ContentControl>("Preview3DHost");
         _preview3DStatusText = FindRequiredControl<TextBlock>("Preview3DStatusText");
     }
@@ -803,5 +962,11 @@ public partial class MainWindow : Window
     private static void ShowError(string message)
     {
         MessageBox.Show(message, "NormalMapGenerator", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    private enum PreviewShape
+    {
+        Plane,
+        Cube
     }
 }

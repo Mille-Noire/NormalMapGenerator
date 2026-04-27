@@ -43,16 +43,28 @@
                 BorderBrush="#D0D5DD"
                 BorderThickness="1"
                 Background="#F8FAFC">
-            <DockPanel LastChildFill="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="280" />
+                </Grid.ColumnDefinitions>
+
                 <Button x:Name="LoadHeightmapButton"
+                        Grid.Column="0"
                         Content="Load Heightmap"
                         MinWidth="132"
                         Padding="12,6"
-                        Margin="0,0,18,0"
                         VerticalAlignment="Top"
                         Click="LoadHeightmapButton_Click" />
 
-                <StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Normal Map Settings"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8" />
+
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="112" />
@@ -298,14 +310,40 @@
                                   VerticalAlignment="Center"
                                   Checked="SettingsChanged"
                                   Unchecked="SettingsChanged" />
-                        <CheckBox x:Name="UseHeightmapAlbedoCheckBox"
-                                  Content="Use Heightmap Albedo"
-                                  VerticalAlignment="Center"
-                                  Checked="UseHeightmapAlbedoChanged"
-                                  Unchecked="UseHeightmapAlbedoChanged" />
                     </StackPanel>
                 </StackPanel>
-            </DockPanel>
+
+                <StackPanel Grid.Column="4">
+                    <TextBlock Text="3D Preview Settings"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8" />
+                    <CheckBox x:Name="UseHeightmapAlbedoCheckBox"
+                              Content="Use Heightmap Albedo"
+                              Margin="0,0,0,10"
+                              VerticalAlignment="Center"
+                              Checked="UseHeightmapAlbedoChanged"
+                              Unchecked="UseHeightmapAlbedoChanged" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Shape"
+                                   Margin="0,0,12,0"
+                                   VerticalAlignment="Center" />
+                        <ComboBox x:Name="PreviewShapeComboBox"
+                                  Grid.Column="1"
+                                  MinWidth="120"
+                                  SelectionChanged="PreviewShapeChanged">
+                            <ComboBoxItem Content="Plane"
+                                          Tag="Plane"
+                                          IsSelected="True" />
+                            <ComboBoxItem Content="Cube"
+                                          Tag="Cube" />
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1"
